@@ -1,0 +1,9 @@
+outputDirectory: ./backups
+
+databases:
+  - name: test_db
+    host: localhost 
+    port: 5432
+    username: ${PGSAFE_TEST_USER}
+    password: ${PGSAFE_TEST_PASSWORD}
+    database: test_db
