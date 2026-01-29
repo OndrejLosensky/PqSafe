@@ -14,8 +14,8 @@ public record BackupFailure(
 
 public class BackupRunResult
 {
-    public List<BackupSuccess> Successes { get; } = [];
-    public List<BackupFailure> Failures { get; } = [];
+    public List<BackupSuccess> Successes { get; } = new();
+    public List<BackupFailure> Failures { get; } = new();
 
     public bool HasFailures => Failures.Count > 0;
 }

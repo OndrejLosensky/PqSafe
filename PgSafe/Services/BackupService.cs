@@ -6,45 +6,69 @@ namespace PgSafe.Services;
 
 public static class BackupService
 {
-    public static BackupRunResult Run(PgSafeConfig config)
+    public static BackupRunResult Run(
+        PgSafeConfig config,
+        Action<BackupProgress>? onProgress = null
+    )
     {
         var result = new BackupRunResult();
 
-        foreach (var (instanceName, instance) in config.Instances)
+        var allTargets = config.Instances
+            .SelectMany(i =>
+                i.Value.Databases
+                    .Where(d => d.Value.Backup.Enabled)
+                    .Select(d => (instance: i.Key, db: d.Key, cfg: i.Value))
+            )
+            .ToList();
+
+        var total = allTargets.Count;
+        var current = 0;
+
+        foreach (var target in allTargets)
         {
-            foreach (var (dbName, db) in instance.Databases)
+            current++;
+
+            onProgress?.Invoke(new BackupProgress(
+                target.instance,
+                target.db,
+                current,
+                total
+            ));
+
+            try
             {
-                if (!db.Backup.Enabled)
-                    continue;
+                var file = BackupDatabase(
+                    config.OutputDir,
+                    target.instance,
+                    target.cfg,
+                    target.db
+                );
 
-                try
-                {
-                    var file = BackupDatabase(
-                        config.OutputDir,
-                        instanceName,
-                        instance,
-                        dbName
-                    );
-
-                    result.Successes.Add(
-                        new BackupSuccess(instanceName, dbName, file)
-                    );
-                }
-                catch (Exception ex)
-                {
-                    result.Failures.Add(
-                        new BackupFailure(instanceName, dbName, ex.Message)
-                    );
-
-                    Console.WriteLine(
-                        $"Backup failed: {instanceName}/{dbName}\n{ex.Message}"
-                    );
-                }
+                result.Successes.Add(
+                    new BackupSuccess(target.instance, target.db, file)
+                );
+            }
+            catch (Exception ex)
+            {
+                result.Failures.Add(
+                    new BackupFailure(target.instance, target.db, ex.Message)
+                );
             }
         }
 
         return result;
     }
+    
+    public static void RunSingle(
+        string outputDir,
+        string instanceName,
+        PgInstanceConfig instance,
+        string databaseName
+    )
+    {
+        BackupDatabase(outputDir, instanceName, instance, databaseName);
+    }
+
 
 
     private static string BackupDatabase(
@@ -61,8 +85,6 @@ public static class BackupService
 
         var finalFile = Path.Combine(targetDir, $"{timestamp}.dump");
         var tempFile = finalFile + ".tmp";
-
-        Console.WriteLine($"Backing up {instanceName}/{databaseName}");
 
         var psi = new ProcessStartInfo
         {
@@ -95,8 +117,6 @@ public static class BackupService
         }
 
         File.Move(tempFile, finalFile);
-        
-        Console.WriteLine($"Backup completed: {instanceName}/{databaseName}");
         
         return finalFile;
     }

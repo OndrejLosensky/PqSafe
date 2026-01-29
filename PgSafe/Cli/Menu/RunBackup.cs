@@ -2,6 +2,7 @@ using PgSafe.Config;
 using PgSafe.Services;
 using PgSafe.Models;
 using Spectre.Console;
+using PgSafe.Cli.Selectors;
 
 namespace PgSafe.Cli.Menu;
 
@@ -25,61 +26,87 @@ public static class RunBackup
             return;
         }
 
-        var selections = SelectDatabases(config);
+        // Select instances
+        var selectedInstances = InstanceSelector.SelectInstances(config);
 
-        if (selections.Count == 0)
+        if (selectedInstances.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No instances selected. Aborting.[/]");
+            return;
+        }
+
+        // Select databases (scoped to instances)
+        var selectedDatabases = DatabaseSelector.SelectDatabases(
+            config,
+            selectedInstances
+        );
+
+        if (selectedDatabases.Count == 0)
         {
             AnsiConsole.MarkupLine("[yellow]No databases selected. Aborting.[/]");
             return;
         }
 
-        ApplySelection(config, selections);
+        // Apply selection to config
+        ApplySelection(config, selectedDatabases);
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Starting backup…[/]");
         AnsiConsole.WriteLine();
+        
+        var result = new BackupRunResult();
+        
+        AnsiConsole.Progress()
+            .AutoClear(false)
+            .Columns(
+                new TaskDescriptionColumn(),
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new SpinnerColumn()
+            )
+            .Start(ctx =>
+            {
+                foreach (var (instanceName, instance) in config.Instances)
+                {
+                    foreach (var (dbName, db) in instance.Databases)
+                    {
+                        if (!db.Backup.Enabled)
+                            continue;
 
-        var result = BackupService.Run(config);
+                        var task = ctx.AddTask($"{instanceName}/{dbName}", maxValue: 100);
 
+                        try
+                        {
+                            BackupService.RunSingle(
+                                config.OutputDir,
+                                instanceName,
+                                instance,
+                                dbName
+                            );
+
+                            task.Value = 100;
+
+                            result.Successes.Add(
+                                new BackupSuccess(instanceName, dbName, "OK")
+                            );
+                        }
+                        catch (Exception ex)
+                        {
+                            task.StopTask();
+
+                            result.Failures.Add(
+                                new BackupFailure(instanceName, dbName, ex.Message)
+                            );
+                        }
+                    }
+                }
+            });
+
+        // Render summary 
         RenderSummary(result);
 
         AnsiConsole.MarkupLine("\n[grey]Press any key to continue…[/]");
         Console.ReadKey(true);
-    }
-
-    private static List<(string instance, string database)> SelectDatabases(PgSafeConfig config)
-    {
-        var allDbs = new List<(string instance, string database)>();
-
-        foreach (var (instanceName, instance) in config.Instances)
-        {
-            foreach (var dbName in instance.Databases.Keys)
-            {
-                allDbs.Add((instanceName, dbName));
-            }
-        }
-
-        var choice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("What do you want to back up?")
-                .AddChoices(
-                    "All databases",
-                    "Select databases"
-                )
-        );
-
-        if (choice == "All databases")
-            return allDbs;
-
-        var selected = AnsiConsole.Prompt(
-            new MultiSelectionPrompt<(string instance, string database)>()
-                .Title("Select databases to back up")
-                .NotRequired()
-                .UseConverter(x => $"{x.instance}/{x.database}")
-                .AddChoices(allDbs)
-        );
-
-        return selected.ToList();
     }
 
     private static void ApplySelection(
@@ -122,7 +149,7 @@ public static class RunBackup
             table.AddRow(
                 failure.Instance,
                 failure.Database,
-                $"[red]FAILED[/]"
+                "[red]FAILED[/]"
             );
         }
 
