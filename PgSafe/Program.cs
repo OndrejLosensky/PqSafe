@@ -1,5 +1,8 @@
 ﻿using System.CommandLine;
 using PgSafe.Cli;
+using DotNetEnv;
+
+Env.Load();
 
 var rootCommand = new RootCommand("PgSafe - PostgreSQL backup & restore CLI");
 
