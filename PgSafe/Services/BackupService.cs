@@ -1,12 +1,15 @@
 using System.Diagnostics;
 using PgSafe.Config;
+using PgSafe.Models;
 
 namespace PgSafe.Services;
 
 public static class BackupService
 {
-    public static void Run(PgSafeConfig config)
+    public static BackupRunResult Run(PgSafeConfig config)
     {
+        var result = new BackupRunResult();
+
         foreach (var (instanceName, instance) in config.Instances)
         {
             foreach (var (dbName, db) in instance.Databases)
@@ -14,17 +17,37 @@ public static class BackupService
                 if (!db.Backup.Enabled)
                     continue;
 
-                BackupDatabase(
-                    config.OutputDir,
-                    instanceName,
-                    instance,
-                    dbName
-                );
+                try
+                {
+                    var file = BackupDatabase(
+                        config.OutputDir,
+                        instanceName,
+                        instance,
+                        dbName
+                    );
+
+                    result.Successes.Add(
+                        new BackupSuccess(instanceName, dbName, file)
+                    );
+                }
+                catch (Exception ex)
+                {
+                    result.Failures.Add(
+                        new BackupFailure(instanceName, dbName, ex.Message)
+                    );
+
+                    Console.WriteLine(
+                        $"Backup failed: {instanceName}/{dbName}\n{ex.Message}"
+                    );
+                }
             }
         }
+
+        return result;
     }
 
-    private static void BackupDatabase(
+
+    private static string BackupDatabase(
         string outputDir,
         string instanceName,
         PgInstanceConfig instance,
@@ -38,7 +61,7 @@ public static class BackupService
 
         var outputFile = Path.Combine(targetDir, $"{timestamp}.dump");
 
-        Console.WriteLine($"Backing up {instanceName}/{databaseName} → {outputFile}");
+        Console.WriteLine($"Backing up {instanceName}/{databaseName}");
 
         var psi = new ProcessStartInfo
         {
@@ -63,11 +86,10 @@ public static class BackupService
         if (process.ExitCode != 0)
         {
             var error = process.StandardError.ReadToEnd();
-            throw new Exception(
-                $"Backup failed for {instanceName}/{databaseName}:\n{error}"
-            );
+            throw new Exception(error);
         }
 
-        Console.WriteLine($"✔ Backup completed: {instanceName}/{databaseName}");
+        Console.WriteLine($"Backup completed: {instanceName}/{databaseName}");
+        return outputFile;
     }
 }

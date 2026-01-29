@@ -21,7 +21,15 @@ public static class BackupCommand
         command.SetHandler((string configPath) =>
         {
             var config = ConfigLoader.Load(configPath);
-            BackupService.Run(config);
+            var result = BackupService.Run(config);
+
+            Console.WriteLine();
+            Console.WriteLine("Backup summary:");
+            Console.WriteLine($"  Successful: {result.Successes.Count}");
+            Console.WriteLine($"  Failed:     {result.Failures.Count}");
+
+            if (result.HasFailures)
+                Environment.ExitCode = 1;
         }, configOption);
 
         return command;
