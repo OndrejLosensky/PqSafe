@@ -59,7 +59,8 @@ public static class BackupService
         var targetDir = Path.Combine(outputDir, instanceName, databaseName);
         Directory.CreateDirectory(targetDir);
 
-        var outputFile = Path.Combine(targetDir, $"{timestamp}.dump");
+        var finalFile = Path.Combine(targetDir, $"{timestamp}.dump");
+        var tempFile = finalFile + ".tmp";
 
         Console.WriteLine($"Backing up {instanceName}/{databaseName}");
 
@@ -71,7 +72,7 @@ public static class BackupService
                 $"-p {instance.Port} " +
                 $"-U {instance.Username} " +
                 $"-F c " +
-                $"-f \"{outputFile}\" " +
+                $"-f \"{tempFile}\" " +
                 databaseName,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
@@ -86,10 +87,17 @@ public static class BackupService
         if (process.ExitCode != 0)
         {
             var error = process.StandardError.ReadToEnd();
+
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+
             throw new Exception(error);
         }
 
+        File.Move(tempFile, finalFile);
+        
         Console.WriteLine($"Backup completed: {instanceName}/{databaseName}");
-        return outputFile;
+        
+        return finalFile;
     }
 }
