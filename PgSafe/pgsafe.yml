@@ -1,9 +1,28 @@
-outputDirectory: ./backups
+outputDir: ./backups
 
-databases:
-  - name: test_db
-    host: localhost 
+instances:
+  db_prod:
+    host: prod-db.local
     port: 5432
-    username: ${PGSAFE_TEST_USER}
-    password: ${PGSAFE_TEST_PASSWORD}
-    database: test_db
+    username: ${PG_PROD_USER}
+    password: ${PG_PROD_PASSWORD}
+
+    databases:
+      app_db:
+        backup:
+          enabled: true
+
+      auth_db:
+        backup:
+          enabled: true
+
+  db_sandbox:
+    host: sandbox-db.local
+    port: 5432
+    username: ${PG_SANDBOX_USER}
+    password: ${PG_SANDBOX_PASSWORD}
+
+    databases:
+      playground:
+        backup:
+          enabled: true

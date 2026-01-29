@@ -24,13 +24,19 @@ public static class BackupCommand
             var config = ConfigLoader.Load(configPath);
 
             Console.WriteLine($"Output dir: {config.OutputDir}");
-            Console.WriteLine($"Databases configured: {config.Databases.Count}");
+            Console.WriteLine($"Instances configured: {config.Instances.Count}");
 
-            foreach (var db in config.Databases)
+            foreach (var (instanceName, instance) in config.Instances)
             {
-                Console.WriteLine(
-                    $"- {db.Name} ({db.Database}) @ {db.Host}:{db.Port}"
-                );
+                Console.WriteLine($"Instance: {instanceName} ({instance.Host}:{instance.Port})");
+
+                foreach (var (dbName, db) in instance.Databases)
+                {
+                    if (!db.Backup.Enabled)
+                        continue;
+
+                    Console.WriteLine($"  - backup database: {dbName}");
+                }
             }
 
             Console.WriteLine("Config loaded successfully ✔");

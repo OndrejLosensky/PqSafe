@@ -1,4 +1,3 @@
-using PgSafe.Config;
 using PgSafe.Utils;
 
 namespace PgSafe.Config;
@@ -7,12 +6,17 @@ public static class ConfigLoader
 {
     public static PgSafeConfig Load(string path)
     {
-        var config = LoadYaml.LoadYamlFile(path);
+        var fullPath = Path.GetFullPath(path);
 
-        foreach (var db in config.Databases)
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException($"Config file not found: {fullPath}");
+
+        var config = LoadYaml.LoadYamlFile(fullPath);
+
+        foreach (var instance in config.Instances.Values)
         {
-            db.Username = EnvResolver.ResolveEnv(db.Username);
-            db.Password = EnvResolver.ResolveEnv(db.Password);
+            instance.Username = EnvResolver.ResolveEnv(instance.Username);
+            instance.Password = EnvResolver.ResolveEnv(instance.Password);
         }
 
         ConfigValidator.Validate(config);
