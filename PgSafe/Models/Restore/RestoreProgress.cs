@@ -1,6 +1,6 @@
-namespace PgSafe.Models;
+namespace PgSafe.Models.Restore;
 
-public record BackupProgress(
+public record RestoreProgress(
     string Instance,
     string Database,
     int Current,

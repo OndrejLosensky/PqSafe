@@ -7,13 +7,12 @@ public static class DatabaseSelector
 {
     public static List<(string instance, string database)> SelectDatabases(
         PgSafeConfig config,
-        List<string> selectedInstances
+        List<string> selectedInstances,
+        bool singleOnly = false
     )
     {
         var allDbs = new List<(string instance, string database)>();
-        var backItem = ("__BACK__", "__BACK__");
 
-        
         foreach (var instanceName in selectedInstances)
         {
             if (!config.Instances.TryGetValue(instanceName, out var instance))
@@ -28,10 +27,24 @@ public static class DatabaseSelector
         if (allDbs.Count == 0)
             return [];
 
-        // If there's only one DB, don't ask questions
+        // If only one DB exists, return it directly
         if (allDbs.Count == 1)
             return allDbs;
 
+        // RESTORE MODE → exactly one DB, no questions
+        if (singleOnly)
+        {
+            var selected = AnsiConsole.Prompt(
+                new SelectionPrompt<(string instance, string database)>()
+                    .Title("Select database to restore into")
+                    .UseConverter(x => $"{x.instance}/{x.database}")
+                    .AddChoices(allDbs)
+            );
+
+            return [selected];
+        }
+
+        // BACKUP MODE
         var choice = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("What do you want to back up?")

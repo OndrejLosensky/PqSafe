@@ -1,4 +1,4 @@
-namespace PgSafe.Models;
+namespace PgSafe.Models.Backup;
 
 public record BackupSuccess(
     string Instance,

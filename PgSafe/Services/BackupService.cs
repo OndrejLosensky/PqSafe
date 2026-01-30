@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using PgSafe.Config;
-using PgSafe.Models;
+using PgSafe.Models.Backup;
 
 namespace PgSafe.Services;
 

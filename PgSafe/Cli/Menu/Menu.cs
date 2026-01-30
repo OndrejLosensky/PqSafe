@@ -35,11 +35,11 @@ public static class Menu
                     break;
 
                 case "Restore databases":
-                    RunRestore();
+                    ShowRestore();
                     break;
 
                 case "Exit":
-                    AnsiConsole.MarkupLine("[grey]Goodbye 👋[/]");
+                    AnsiConsole.MarkupLine("[grey]Goodbye [/]");
                     return;
             }
         }
@@ -51,9 +51,9 @@ public static class Menu
         Pause();
     }
 
-    private static void RunRestore()
+    private static void ShowRestore()
     {
-        AnsiConsole.MarkupLine("[yellow]Restore flow not implemented yet.[/]");
+        RunRestore.Start(); 
         Pause();
     }
 
