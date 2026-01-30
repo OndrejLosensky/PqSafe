@@ -30,6 +30,8 @@ public static class RestoreService
 
             try
             {
+                var sw = Stopwatch.StartNew();
+
                 RestoreDatabase(
                     target.Instance,
                     target.InstanceConfig,
@@ -37,24 +39,30 @@ public static class RestoreService
                     target.DumpFilePath
                 );
 
+                sw.Stop();
+
                 result.Successes.Add(
-                    new RestoreSuccess(
-                        target.Instance,
-                        target.Database,
-                        target.DumpFilePath
-                    )
+                    new RestoreSuccess
+                    {
+                        Instance = target.Instance,
+                        Database = target.Database,
+                        FilePath = target.DumpFilePath,
+                        Duration = sw.Elapsed
+                    }
                 );
             }
             catch (Exception ex)
             {
                 result.Failures.Add(
-                    new RestoreFailure(
-                        target.Instance,
-                        target.Database,
-                        ex.Message
-                    )
+                    new RestoreFailure
+                    {
+                        Instance = target.Instance,
+                        Database = target.Database,
+                        Error = ex.Message
+                    }
                 );
             }
+
         }
 
         return result;

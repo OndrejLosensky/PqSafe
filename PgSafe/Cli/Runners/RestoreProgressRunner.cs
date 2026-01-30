@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using PgSafe.Models.Restore;
 using PgSafe.Services;
 using Spectre.Console;
@@ -31,6 +32,8 @@ public static class RestoreProgressRunner
                     maxValue: 100
                 );
 
+                var stopwatch = Stopwatch.StartNew();
+
                 try
                 {
                     RestoreService.RunSingle(
@@ -40,27 +43,29 @@ public static class RestoreProgressRunner
                         dumpFile
                     );
 
+                    stopwatch.Stop();
                     task.Value = 100;
 
-                    result.Successes.Add(
-                        new RestoreSuccess(
-                            instanceName,
-                            databaseName,
-                            dumpFile
-                        )
-                    );
+                    result.Successes.Add(new RestoreSuccess
+                    {
+                        Instance = instanceName,
+                        Database = databaseName,
+                        FilePath = dumpFile,
+                        Duration = stopwatch.Elapsed
+                    });
                 }
                 catch (Exception ex)
                 {
+                    stopwatch.Stop();
                     task.StopTask();
 
-                    result.Failures.Add(
-                        new RestoreFailure(
-                            instanceName,
-                            databaseName,
-                            ex.Message
-                        )
-                    );
+                    result.Failures.Add(new RestoreFailure
+                    {
+                        Instance = instanceName,
+                        Database = databaseName,
+                        Error = ex.Message,
+                        Duration = stopwatch.Elapsed
+                    });
                 }
             });
 

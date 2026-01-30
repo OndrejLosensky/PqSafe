@@ -1,8 +1,6 @@
-using PgSafe.Config;
 using PgSafe.Cli.Selectors;
 using PgSafe.Cli.Common;
 using PgSafe.Cli.Runners;
-using PgSafe.Cli.Renderers;
 using Spectre.Console;
 
 namespace PgSafe.Cli.Menu;  
@@ -43,9 +41,8 @@ public static class RunBackup
         var result = BackupProgressRunner.Run(config);
 
         RunSummaryRenderer.Render(
-            "Backup summary",
-            result.Successes.Select(s => (s.Instance, s.Database)),
-            result.Failures.Select(f => (f.Instance, f.Database, f.Error))
+            result.Successes,
+            result.Failures
         );
     }
 }

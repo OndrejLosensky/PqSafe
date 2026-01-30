@@ -1,47 +1,73 @@
+using PgSafe.Models;
+using PgSafe.Utils;
 using Spectre.Console;
 
-namespace PgSafe.Cli.Renderers;
+namespace PgSafe.Cli.Runners;
 
 public static class RunSummaryRenderer
 {
-    public static void Render(
-        string title,
-        IEnumerable<(string Instance, string Database)> successes,
-        IEnumerable<(string Instance, string Database, string Error)> failures
+    public static void Render<TSuccess, TFailure>(
+        IReadOnlyList<TSuccess> successes,
+        IReadOnlyList<TFailure> failures
     )
+        where TSuccess : PgTaskResult
+        where TFailure : PgTaskResult
     {
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[bold]{title}[/]");
+        AnsiConsole.MarkupLine("[bold]Summary[/]");
+
+        var showFile = successes.Any(s => s.FilePath != null);
 
         var table = new Table()
             .AddColumn("Instance")
-            .AddColumn("Database")
+            .AddColumn("Database");
+
+        if (showFile)
+            table.AddColumn("File");
+
+        table
+            .AddColumn("Duration")
             .AddColumn("Result");
 
         foreach (var s in successes)
         {
-            table.AddRow(
+            var row = new List<string>
+            {
                 s.Instance,
-                s.Database,
-                "[green]OK[/]"
-            );
+                s.Database
+            };
+
+            if (showFile)
+                row.Add(Path.GetFileName(s.FilePath!));
+
+            row.Add(TimeFormatter.Humanize(s.Duration));
+            row.Add("[green]OK[/]");
+
+            table.AddRow(row.ToArray());
         }
 
         foreach (var f in failures)
         {
-            table.AddRow(
+            var row = new List<string>
+            {
                 f.Instance,
-                f.Database,
-                "[red]FAILED[/]"
-            );
+                f.Database
+            };
+
+            if (showFile)
+                row.Add("-");
+
+            row.Add(TimeFormatter.Humanize(f.Duration));
+            row.Add("[red]FAILED[/]");
+
+            table.AddRow(row.ToArray());
         }
 
         AnsiConsole.Write(table);
 
-        AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine(
-            $"[green]Successful:[/] {successes.Count()}   " +
-            $"[red]Failed:[/] {failures.Count()}"
+            $"\n[green]Successful:[/] {successes.Count}   " +
+            $"[red]Failed:[/] {failures.Count}"
         );
     }
 }

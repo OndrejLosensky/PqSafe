@@ -1,7 +1,5 @@
-using PgSafe.Cli.Renderers;
 using PgSafe.Config;
 using PgSafe.Cli.Runners;
-using PgSafe.Models.Restore;
 using Spectre.Console;
 using PgSafe.Cli.Selectors;
 using PgSafe.Utils;
@@ -86,9 +84,8 @@ public static class RunRestore
         );
 
         RunSummaryRenderer.Render(
-            "Restore summary",
-            result.Successes.Select(s => (s.Instance, s.Database)),
-            result.Failures.Select(f => (f.Instance, f.Database, f.Error))
+            result.Successes,
+            result.Failures
         );
     }
 }

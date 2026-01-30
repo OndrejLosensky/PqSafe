@@ -1,16 +1,11 @@
 namespace PgSafe.Models.Restore;
 
-public record RestoreSuccess(
-    string Instance,
-    string Database,
-    string FilePath
-);
+public record RestoreSuccess : PgTaskResult;
 
-public record RestoreFailure(
-    string Instance,
-    string Database,
-    string Error
-);
+public record RestoreFailure : PgTaskResult
+{
+    public required string Error { get; init; }
+}
 
 public class RestoreRunResult
 {

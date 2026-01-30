@@ -37,6 +37,8 @@ public static class BackupService
 
             try
             {
+                var sw = Stopwatch.StartNew();
+
                 var file = BackupDatabase(
                     config.OutputDir,
                     target.instance,
@@ -44,29 +46,43 @@ public static class BackupService
                     target.db
                 );
 
+                sw.Stop();
+
                 result.Successes.Add(
-                    new BackupSuccess(target.instance, target.db, file)
+                    new BackupSuccess
+                    {
+                        Instance = target.instance,
+                        Database = target.db,
+                        FilePath = file,
+                        Duration = sw.Elapsed
+                    }
                 );
             }
             catch (Exception ex)
             {
                 result.Failures.Add(
-                    new BackupFailure(target.instance, target.db, ex.Message)
+                    new BackupFailure
+                    {
+                        Instance = target.instance,
+                        Database = target.db,
+                        Error = ex.Message
+                    }
                 );
             }
+
         }
 
         return result;
     }
     
-    public static void RunSingle(
+    public static string  RunSingle(
         string outputDir,
         string instanceName,
         PgInstanceConfig instance,
         string databaseName
     )
     {
-        BackupDatabase(outputDir, instanceName, instance, databaseName);
+        return BackupDatabase(outputDir, instanceName, instance, databaseName);
     }
 
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using PgSafe.Config;
 using PgSafe.Models.Backup;
 using PgSafe.Services;
@@ -33,32 +34,40 @@ public static class BackupProgressRunner
                             maxValue: 100
                         );
 
+                        var sw = Stopwatch.StartNew();
+
                         try
                         {
-                            BackupService.RunSingle(
+                            var filePath = BackupService.RunSingle(
                                 config.OutputDir,
                                 instanceName,
                                 instance,
                                 dbName
                             );
 
+                            sw.Stop();
                             task.Value = 100;
 
-                            result.Successes.Add(
-                                new BackupSuccess(instanceName, dbName, "OK")
-                            );
+                            result.Successes.Add(new BackupSuccess
+                            {
+                                Instance = instanceName,
+                                Database = dbName,
+                                FilePath = filePath,
+                                Duration = sw.Elapsed
+                            });
                         }
                         catch (Exception ex)
                         {
+                            sw.Stop();
                             task.StopTask();
 
-                            result.Failures.Add(
-                                new BackupFailure(
-                                    instanceName,
-                                    dbName,
-                                    ex.Message
-                                )
-                            );
+                            result.Failures.Add(new BackupFailure
+                            {
+                                Instance = instanceName,
+                                Database = dbName,
+                                Error = ex.Message,
+                                Duration = sw.Elapsed
+                            });
                         }
                     }
                 }

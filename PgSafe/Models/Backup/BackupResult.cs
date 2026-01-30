@@ -1,16 +1,11 @@
 namespace PgSafe.Models.Backup;
 
-public record BackupSuccess(
-    string Instance,
-    string Database,
-    string FilePath
-);
+public record BackupSuccess : PgTaskResult;
 
-public record BackupFailure(
-    string Instance,
-    string Database,
-    string Error
-);
+public record BackupFailure : PgTaskResult
+{
+    public required string Error { get; init; }
+}
 
 public class BackupRunResult
 {
