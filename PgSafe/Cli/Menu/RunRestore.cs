@@ -1,9 +1,12 @@
 using PgSafe.Config;
 using PgSafe.Cli.Runners;
 using PgSafe.Cli.Renderers;
+using PgSafe.Models.Backup;
+using PgSafe.Services;
 using Spectre.Console;
 using PgSafe.Cli.Selectors;
 using PgSafe.Utils;
+using System.Diagnostics;
 
 namespace PgSafe.Cli.Menu;
 
@@ -32,7 +35,6 @@ public static class RunRestore
         if (instances.Count == 0)
             return;
 
-        // Restore is one DB at a time → force single instance
         var instanceName = instances.First();
         var instance = config.Instances[instanceName];
 
@@ -61,23 +63,34 @@ public static class RunRestore
         var confirmed = RestoreConfirmation.Ask(
             instanceName,
             databaseName,
-            dumpFile
+            dumpFile,
+            out var createSafetyBackup
         );
 
         if (!confirmed)
         {
             AnsiConsole.MarkupLine("[yellow]Restore cancelled.[/]");
-            AnsiConsole.MarkupLine("[grey]Press any key to continue…[/]");
-            Console.ReadKey(true);
             return;
         }
 
-        // Progress
+        // SAFETY BACKUP
+        if (createSafetyBackup)
+        {
+            if (!RunSafetyBackup(
+                    config,
+                    instanceName,
+                    instance,
+                    databaseName
+                ))
+                return;
+        }
+
+        // RESTORE
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Starting restore…[/]");
         AnsiConsole.WriteLine();
 
-        var result = RestoreProgressRunner.Run(
+        var restoreResult = RestoreProgressRunner.Run(
             instanceName,
             instance,
             databaseName,
@@ -85,8 +98,77 @@ public static class RunRestore
         );
 
         RunSummaryRenderer.Render(
+            restoreResult.Successes,
+            restoreResult.Failures
+        );
+    }
+    
+    private static bool RunSafetyBackup(
+        PgSafeConfig config,
+        string instanceName,
+        PgInstanceConfig instance,
+        string databaseName
+    )
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[yellow]Creating safety backup…[/]");
+        AnsiConsole.WriteLine();
+
+        var result = new BackupRunResult();
+
+        try
+        {
+            var sw = Stopwatch.StartNew();
+
+            var file = BackupService.RunSingle(
+                config.OutputDir,
+                instanceName,
+                instance,
+                databaseName
+            );
+
+            sw.Stop();
+
+            result.Successes.Add(
+                new BackupSuccess
+                {
+                    Instance = instanceName,
+                    Database = databaseName,
+                    FilePath = file,
+                    FileSizeBytes = FileUtils.GetFileSize(file),
+                    Duration = sw.Elapsed
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            result.Failures.Add(
+                new BackupFailure
+                {
+                    Instance = instanceName,
+                    Database = databaseName,
+                    Error = ex.Message,
+                    Duration = TimeSpan.Zero
+                }
+            );
+
+            RunSummaryRenderer.Render(
+                result.Successes,
+                result.Failures
+            );
+
+            AnsiConsole.MarkupLine(
+                "[red]Safety backup failed. Restore aborted.[/]"
+            );
+
+            return false;
+        }
+
+        RunSummaryRenderer.Render(
             result.Successes,
             result.Failures
         );
+
+        return true;
     }
 }

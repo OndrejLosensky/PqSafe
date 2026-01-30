@@ -7,7 +7,8 @@ public static class RestoreConfirmation
     public static bool Ask(
         string instance,
         string database,
-        string dumpFile
+        string dumpFile,
+        out bool createSafetyBackup
     )
     {
         AnsiConsole.WriteLine();
@@ -30,6 +31,11 @@ public static class RestoreConfirmation
 
         AnsiConsole.Write(panel);
         AnsiConsole.WriteLine();
+
+        createSafetyBackup = AnsiConsole.Confirm(
+            "Create a safety backup before restore?",
+            defaultValue: true
+        );
 
         return AnsiConsole.Confirm(
             "[red]Do you really want to continue?[/]",
