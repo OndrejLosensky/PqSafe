@@ -2,7 +2,7 @@ using PgSafe.Models;
 using PgSafe.Utils;
 using Spectre.Console;
 
-namespace PgSafe.Cli.Runners;
+namespace PgSafe.Cli.Renderers;
 
 public static class RunSummaryRenderer
 {
@@ -17,6 +17,7 @@ public static class RunSummaryRenderer
         AnsiConsole.MarkupLine("[bold]Summary[/]");
 
         var showFile = successes.Any(s => s.FilePath != null);
+        var showSize = successes.Any(s => s.FileSizeBytes != null);
 
         var table = new Table()
             .AddColumn("Instance")
@@ -24,6 +25,9 @@ public static class RunSummaryRenderer
 
         if (showFile)
             table.AddColumn("File");
+
+        if (showSize)
+            table.AddColumn("Size");
 
         table
             .AddColumn("Duration")
@@ -40,6 +44,13 @@ public static class RunSummaryRenderer
             if (showFile)
                 row.Add(Path.GetFileName(s.FilePath!));
 
+            if (showSize)
+                row.Add(
+                    s.FileSizeBytes is not null
+                        ? SizeFormatter.Humanize(s.FileSizeBytes.Value)
+                        : "-"
+                );
+
             row.Add(TimeFormatter.Humanize(s.Duration));
             row.Add("[green]OK[/]");
 
@@ -55,6 +66,9 @@ public static class RunSummaryRenderer
             };
 
             if (showFile)
+                row.Add("-");
+
+            if (showSize)
                 row.Add("-");
 
             row.Add(TimeFormatter.Humanize(f.Duration));

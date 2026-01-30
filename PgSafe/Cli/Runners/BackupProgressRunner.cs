@@ -2,6 +2,7 @@ using System.Diagnostics;
 using PgSafe.Config;
 using PgSafe.Models.Backup;
 using PgSafe.Services;
+using PgSafe.Utils;
 using Spectre.Console;
 
 namespace PgSafe.Cli.Runners;
@@ -53,6 +54,7 @@ public static class BackupProgressRunner
                                 Instance = instanceName,
                                 Database = dbName,
                                 FilePath = filePath,
+                                FileSizeBytes = FileUtils.GetFileSize(filePath),
                                 Duration = sw.Elapsed
                             });
                         }

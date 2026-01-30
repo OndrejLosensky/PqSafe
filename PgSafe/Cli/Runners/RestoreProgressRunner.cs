@@ -3,6 +3,7 @@ using PgSafe.Models.Restore;
 using PgSafe.Services;
 using Spectre.Console;
 using PgSafe.Config;
+using PgSafe.Utils;
 
 namespace PgSafe.Cli.Runners;
 
@@ -51,6 +52,7 @@ public static class RestoreProgressRunner
                         Instance = instanceName,
                         Database = databaseName,
                         FilePath = dumpFile,
+                        FileSizeBytes = FileUtils.GetFileSize(dumpFile),
                         Duration = stopwatch.Elapsed
                     });
                 }
