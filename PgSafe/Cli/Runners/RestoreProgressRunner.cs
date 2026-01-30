@@ -1,7 +1,5 @@
-using System.Diagnostics;
 using PgSafe.Models.Restore;
 using PgSafe.Services;
-using Spectre.Console;
 using PgSafe.Config;
 using PgSafe.Utils;
 
@@ -12,64 +10,47 @@ public static class RestoreProgressRunner
     public static RestoreRunResult Run(
         string instanceName,
         PgInstanceConfig instance,
-        string databaseName,
+        string database,
         string dumpFile
     )
     {
         var result = new RestoreRunResult();
 
-        AnsiConsole.Progress()
-            .AutoClear(false)
-            .Columns(
-                new TaskDescriptionColumn(),
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new SpinnerColumn()
-            )
-            .Start(ctx =>
+        var target = new RestoreTarget(
+            instanceName,
+            instance,
+            database,
+            dumpFile
+        );
+
+        ProgressRunner.Run(
+            new[] { target },
+            t => $"{t.InstanceName}/{t.DatabaseName}",
+
+            t => RestoreService.RunSingle(
+                t.InstanceName,
+                t.InstanceConfig,
+                t.DatabaseName,
+                t.DumpFile
+            ),
+
+            (t, d) => result.Successes.Add(new RestoreSuccess
             {
-                var task = ctx.AddTask(
-                    $"{instanceName}/{databaseName}",
-                    maxValue: 100
-                );
+                Instance = t.InstanceName,
+                Database = t.DatabaseName,
+                FilePath = t.DumpFile,
+                FileSizeBytes = FileUtils.GetFileSize(t.DumpFile),
+                Duration = d
+            }),
 
-                var stopwatch = Stopwatch.StartNew();
-
-                try
-                {
-                    RestoreService.RunSingle(
-                        instanceName,
-                        instance,
-                        databaseName,
-                        dumpFile
-                    );
-
-                    stopwatch.Stop();
-                    task.Value = 100;
-
-                    result.Successes.Add(new RestoreSuccess
-                    {
-                        Instance = instanceName,
-                        Database = databaseName,
-                        FilePath = dumpFile,
-                        FileSizeBytes = FileUtils.GetFileSize(dumpFile),
-                        Duration = stopwatch.Elapsed
-                    });
-                }
-                catch (Exception ex)
-                {
-                    stopwatch.Stop();
-                    task.StopTask();
-
-                    result.Failures.Add(new RestoreFailure
-                    {
-                        Instance = instanceName,
-                        Database = databaseName,
-                        Error = ex.Message,
-                        Duration = stopwatch.Elapsed
-                    });
-                }
-            });
+            (t, ex, d) => result.Failures.Add(new RestoreFailure
+            {
+                Instance = t.InstanceName,
+                Database = t.DatabaseName,
+                Error = ex.Message,
+                Duration = d
+            })
+        );
 
         return result;
     }

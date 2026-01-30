@@ -22,8 +22,8 @@ public static class RestoreService
             current++;
 
             onProgress?.Invoke(new RestoreProgress(
-                target.Instance,
-                target.Database,
+                target.InstanceName,
+                target.DatabaseName,
                 current,
                 total
             ));
@@ -33,10 +33,10 @@ public static class RestoreService
                 var sw = Stopwatch.StartNew();
 
                 RestoreDatabase(
-                    target.Instance,
+                    target.InstanceName,
                     target.InstanceConfig,
-                    target.Database,
-                    target.DumpFilePath
+                    target.DatabaseName,
+                    target.DumpFile
                 );
 
                 sw.Stop();
@@ -44,9 +44,9 @@ public static class RestoreService
                 result.Successes.Add(
                     new RestoreSuccess
                     {
-                        Instance = target.Instance,
-                        Database = target.Database,
-                        FilePath = target.DumpFilePath,
+                        Instance = target.InstanceName,
+                        Database = target.DatabaseName,
+                        FilePath = target.DumpFile,
                         Duration = sw.Elapsed
                     }
                 );
@@ -56,13 +56,12 @@ public static class RestoreService
                 result.Failures.Add(
                     new RestoreFailure
                     {
-                        Instance = target.Instance,
-                        Database = target.Database,
+                        Instance = target.InstanceName,
+                        Database = target.DatabaseName,
                         Error = ex.Message
                     }
                 );
             }
-
         }
 
         return result;
@@ -72,14 +71,14 @@ public static class RestoreService
         string instanceName,
         PgInstanceConfig instance,
         string databaseName,
-        string dumpFilePath
+        string dumpFile
     )
     {
         RestoreDatabase(
             instanceName,
             instance,
             databaseName,
-            dumpFilePath
+            dumpFile
         );
     }
 
@@ -87,12 +86,12 @@ public static class RestoreService
         string instanceName,
         PgInstanceConfig instance,
         string databaseName,
-        string dumpFilePath
+        string dumpFile
     )
     {
-        if (!File.Exists(dumpFilePath))
+        if (!File.Exists(dumpFile))
             throw new FileNotFoundException(
-                $"Dump file not found: {dumpFilePath}"
+                $"Dump file not found: {dumpFile}"
             );
 
         var psi = new ProcessStartInfo
@@ -104,7 +103,7 @@ public static class RestoreService
                 $"-p {instance.Port} " +
                 $"-U {instance.Username} " +
                 $"-d {databaseName} " +
-                $"\"{dumpFilePath}\"",
+                $"\"{dumpFile}\"",
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false

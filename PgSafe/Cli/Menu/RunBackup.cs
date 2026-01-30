@@ -16,6 +16,14 @@ public static class RunBackup
         var config = ConfigLoaderUi.LoadOrShowError("pgsafe.yml");
         if (config is null)
             return;
+        
+        config.DryRun = DryRunSelector.Ask();
+
+        AnsiConsole.MarkupLine(
+            config.DryRun
+                ? "[bold yellow]PgSafe — Restore (DRY RUN)[/]"
+                : "[bold green]PgSafe — Restore[/]"
+        );
 
         var selectedInstances = InstanceSelector.SelectInstances(config);
         if (selectedInstances.Count == 0)

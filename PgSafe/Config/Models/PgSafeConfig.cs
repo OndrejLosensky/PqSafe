@@ -6,4 +6,7 @@ public class PgSafeConfig
 
     // instance name -> config
     public Dictionary<string, PgInstanceConfig> Instances { get; set; } = new();
+    
+    // Runtime flags
+    public bool DryRun { get; set; }
 }

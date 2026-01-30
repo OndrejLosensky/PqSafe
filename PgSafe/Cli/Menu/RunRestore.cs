@@ -7,6 +7,7 @@ using Spectre.Console;
 using PgSafe.Cli.Selectors;
 using PgSafe.Utils;
 using System.Diagnostics;
+using PgSafe.Cli.Common;
 
 namespace PgSafe.Cli.Menu;
 
@@ -18,17 +19,17 @@ public static class RunRestore
         AnsiConsole.MarkupLine("[bold green]PgSafe — Restore[/]");
         AnsiConsole.WriteLine();
 
-        PgSafeConfig config;
-
-        try
-        {
-            config = ConfigLoader.Load("pgsafe.yml");
-        }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Failed to load config:[/] {ex.Message}");
+        var config = ConfigLoaderUi.LoadOrShowError("pgsafe.yml");
+        if (config is null)
             return;
-        }
+        
+        config.DryRun = DryRunSelector.Ask();
+
+        AnsiConsole.MarkupLine(
+            config.DryRun
+                ? "[bold yellow]PgSafe — Restore (DRY RUN)[/]"
+                : "[bold green]PgSafe — Restore[/]"
+        );
 
         // Instance selection
         var instances = InstanceSelector.SelectInstances(config);
