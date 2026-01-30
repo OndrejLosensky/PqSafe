@@ -9,4 +9,6 @@ public class PgSafeConfig
     
     // Runtime flags
     public bool DryRun { get; set; }
+    
+    public int Parallelism { get; set; } = 1;
 }

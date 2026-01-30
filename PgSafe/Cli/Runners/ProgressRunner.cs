@@ -10,9 +10,13 @@ public static class ProgressRunner
         Func<TTarget, string> label,
         Action<TTarget> execute,
         Action<TTarget, TimeSpan> success,
-        Action<TTarget, Exception, TimeSpan> failure
+        Action<TTarget, Exception, TimeSpan> failure,
+        int parallelism = 1
     )
     {
+        var semaphore = new SemaphoreSlim(parallelism);
+        var resultLock = new object();
+
         AnsiConsole.Progress()
             .AutoClear(false)
             .Columns(
@@ -23,26 +27,44 @@ public static class ProgressRunner
             )
             .Start(ctx =>
             {
-                foreach (var target in targets)
+                var tasks = targets.Select(target =>
                 {
-                    var task = ctx.AddTask(label(target), maxValue: 100);
-                    var sw = Stopwatch.StartNew();
+                    var progressTask = ctx.AddTask(
+                        label(target),
+                        maxValue: 100
+                    );
 
-                    try
+                    return Task.Run(async () =>
                     {
-                        execute(target);
+                        await semaphore.WaitAsync();
+                        var sw = Stopwatch.StartNew();
 
-                        sw.Stop();
-                        task.Value = 100;
-                        success(target, sw.Elapsed);
-                    }
-                    catch (Exception ex)
-                    {
-                        sw.Stop();
-                        task.StopTask();
-                        failure(target, ex, sw.Elapsed);
-                    }
-                }
+                        try
+                        {
+                            execute(target);
+
+                            sw.Stop();
+                            progressTask.Value = 100;
+
+                            lock (resultLock)
+                                success(target, sw.Elapsed);
+                        }
+                        catch (Exception ex)
+                        {
+                            sw.Stop();
+                            progressTask.StopTask();
+
+                            lock (resultLock)
+                                failure(target, ex, sw.Elapsed);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    });
+                }).ToArray();
+
+                Task.WaitAll(tasks);
             });
     }
 }

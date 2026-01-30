@@ -72,7 +72,9 @@ public static class BackupProgressRunner
                 Database = t.DatabaseName,
                 Error = ex.Message,
                 Duration = d
-            })
+            }),
+            
+            parallelism: config.Parallelism
         );
 
         return result;
