@@ -8,6 +8,7 @@ using PgSafe.Cli.Selectors;
 using PgSafe.Utils;
 using System.Diagnostics;
 using PgSafe.Cli.Common;
+using PgSafe.Enums;
 
 namespace PgSafe.Cli.Menu;
 
@@ -79,6 +80,19 @@ public static class RunRestore
             AnsiConsole.MarkupLine("[yellow]Restore cancelled.[/]");
             return;
         }
+        
+        var restoreTargetMode = RestoreTargetSelector.Ask();
+
+        string targetDatabaseName;
+
+        if (restoreTargetMode == RestoreTargetMode.ExistingDatabase)
+        {
+            targetDatabaseName = databaseName;
+        }
+        else
+        {
+            targetDatabaseName = NewDatabaseNamePrompt.Ask();
+        }
 
         // SAFETY BACKUP
         if (createSafetyBackup)
@@ -91,19 +105,38 @@ public static class RunRestore
                 ))
                 return;
         }
+        
+        if (restoreTargetMode == RestoreTargetMode.NewDatabase)
+        {
+            AnsiConsole.MarkupLine(
+                $"[green]Creating database '{targetDatabaseName}'…[/]"
+            );
+
+            DatabaseProvisioningService.CreateDatabase(
+                instance,
+                targetDatabaseName
+            );
+        }
 
         // RESTORE
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Starting restore…[/]");
         AnsiConsole.WriteLine();
 
+        AnsiConsole.MarkupLine(
+            targetDatabaseName == databaseName
+                ? $"[yellow]Restoring into existing database:[/] [bold]{databaseName}[/]"
+                : $"[green]Restoring into NEW database:[/] [bold]{targetDatabaseName}[/]"
+        );
+        AnsiConsole.WriteLine();
+        
         // Measure total wall-clock time for the restore run
         var swTotal = Stopwatch.StartNew();
 
         var restoreResult = RestoreProgressRunner.Run(
             instanceName,
             instance,
-            databaseName,
+            targetDatabaseName,
             dumpFile
         );
 
