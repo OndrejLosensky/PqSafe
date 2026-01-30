@@ -42,9 +42,10 @@ public static class RunBackup
 
         var result = BackupProgressRunner.Run(config);
 
-        BackupSummaryRenderer.Render(result);
-
-        AnsiConsole.MarkupLine("\n[grey]Press any key to continue…[/]");
-        Console.ReadKey(true);
+        RunSummaryRenderer.Render(
+            "Backup summary",
+            result.Successes.Select(s => (s.Instance, s.Database)),
+            result.Failures.Select(f => (f.Instance, f.Database, f.Error))
+        );
     }
 }

@@ -1,5 +1,6 @@
+using PgSafe.Cli.Renderers;
 using PgSafe.Config;
-using PgSafe.Services;
+using PgSafe.Cli.Runners;
 using PgSafe.Models.Restore;
 using Spectre.Console;
 using PgSafe.Cli.Selectors;
@@ -72,97 +73,22 @@ public static class RunRestore
             return;
         }
 
-        var result = new RestoreRunResult();
-
+        // Progress
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Starting restore…[/]");
         AnsiConsole.WriteLine();
 
-        // Progress
-        AnsiConsole.Progress()
-            .AutoClear(false)
-            .Columns(
-                new TaskDescriptionColumn(),
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new SpinnerColumn()
-            )
-            .Start(ctx =>
-            {
-                var task = ctx.AddTask(
-                    $"{instanceName}/{databaseName}",
-                    maxValue: 100
-                );
+        var result = RestoreProgressRunner.Run(
+            instanceName,
+            instance,
+            databaseName,
+            dumpFile
+        );
 
-                try
-                {
-                    RestoreService.RunSingle(
-                        instanceName,
-                        instance,
-                        databaseName,
-                        dumpFile
-                    );
-
-                    task.Value = 100;
-
-                    result.Successes.Add(
-                        new RestoreSuccess(instanceName, databaseName, dumpFile)
-                    );
-                }
-                catch (Exception ex)
-                {
-                    task.StopTask();
-
-                    result.Failures.Add(
-                        new RestoreFailure(
-                            instanceName,
-                            databaseName,
-                            ex.Message
-                        )
-                    );
-                }
-            });
-
-        RenderSummary(result);
-
-        AnsiConsole.MarkupLine("\n[grey]Press any key to continue…[/]");
-        Console.ReadKey(true);
-    }
-
-    private static void RenderSummary(RestoreRunResult result)
-    {
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[bold]Restore summary[/]");
-
-        var table = new Table()
-            .AddColumn("Instance")
-            .AddColumn("Database")
-            .AddColumn("Result");
-
-        foreach (var success in result.Successes)
-        {
-            table.AddRow(
-                success.Instance,
-                success.Database,
-                "[green]OK[/]"
-            );
-        }
-
-        foreach (var failure in result.Failures)
-        {
-            table.AddRow(
-                failure.Instance,
-                failure.Database,
-                "[red]FAILED[/]"
-            );
-        }
-
-        AnsiConsole.Write(table);
-
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine(
-            $"[green]Successful:[/] {result.Successes.Count}   " +
-            $"[red]Failed:[/] {result.Failures.Count}"
+        RunSummaryRenderer.Render(
+            "Restore summary",
+            result.Successes.Select(s => (s.Instance, s.Database)),
+            result.Failures.Select(f => (f.Instance, f.Database, f.Error))
         );
     }
 }

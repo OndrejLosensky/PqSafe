@@ -1,3 +1,4 @@
+using System.Reflection;
 using Spectre.Console;
 
 namespace PgSafe.Cli.Menu;
@@ -10,11 +11,19 @@ public static class Menu
         {
             AnsiConsole.Clear();
 
+            var version = Assembly
+                .GetExecutingAssembly()
+                .GetName()
+                .Version?
+                .ToString(3);
+
             AnsiConsole.Write(
                 new FigletText("PgSafe")
-                    .Centered()
+                    .LeftJustified()
                     .Color(Color.Green)
             );
+
+            AnsiConsole.MarkupLine($"[grey]v{version}[/]");
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
