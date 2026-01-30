@@ -1,4 +1,5 @@
 using PgSafe.Config;
+using PgSafe.Services;
 using Spectre.Console;
 
 namespace PgSafe.Cli.Selectors;
@@ -18,7 +19,22 @@ public static class DatabaseSelector
             if (!config.Instances.TryGetValue(instanceName, out var instance))
                 continue;
 
-            foreach (var dbName in instance.Databases.Keys)
+            IReadOnlyList<string> databases;
+
+            if (instance.AutoDetect)
+            {
+                AnsiConsole.MarkupLine(
+                    $"[grey]Auto-detecting databases for instance [bold]{instanceName}[/]…[/]"
+                );
+
+                databases = DatabaseDiscoveryService.DiscoverDatabases(instance);
+            }
+            else
+            {
+                databases = instance.Databases.Keys.ToList();
+            }
+
+            foreach (var dbName in databases)
             {
                 allDbs.Add((instanceName, dbName));
             }
@@ -31,7 +47,7 @@ public static class DatabaseSelector
         if (allDbs.Count == 1)
             return allDbs;
 
-        // RESTORE MODE → exactly one DB, no questions
+        // RESTORE MODE → exactly one DB
         if (singleOnly)
         {
             var selected = AnsiConsole.Prompt(

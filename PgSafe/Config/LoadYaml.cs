@@ -14,15 +14,25 @@ public static class LoadYaml
         var yaml = File.ReadAllText(path);
 
         var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(UnderscoredNamingConvention.Instance)
+            // YAML uses outputDir / dryRun / autoDetect (camelCase),
+            // so this convention must match or AutoDetect will stay false.
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .IgnoreUnmatchedProperties()
             .Build();
 
-        var config = deserializer.Deserialize<PgSafeConfig>(yaml);
+        PgSafeConfig? config;
+        try
+        {
+            config = deserializer.Deserialize<PgSafeConfig>(yaml);
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Exception during deserialization: {ex.Message}", ex);
+        }
 
         if (config is null)
             throw new Exception("Failed to parse pgsafe.yml");
-
+        
         return config;
     }
 }

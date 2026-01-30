@@ -21,8 +21,12 @@ public static class ConfigValidator
             if (string.IsNullOrWhiteSpace(instance.Password))
                 throw new Exception($"Instance '{instanceName}' password is required");
 
-            if (instance.Databases == null || instance.Databases.Count == 0)
-                throw new Exception($"Instance '{instanceName}' has no databases configured");
+            if (instance.Databases.Count == 0 && !instance.AutoDetect)
+            {
+                throw new Exception(
+                    $"Instance '{instanceName}' has no databases configured and autoDetect is disabled"
+                );
+            }
 
             foreach (var (dbName, _) in instance.Databases)
             {
