@@ -23,13 +23,17 @@ public static class RunRestore
         if (config is null)
             return;
         
-        config.DryRun = DryRunSelector.Ask();
+        if (config.DryRun)
+        {
+            config.DryRun = DryRunSelector.Ask();
 
-        AnsiConsole.MarkupLine(
-            config.DryRun
-                ? "[bold yellow]PgSafe — Restore (DRY RUN)[/]"
-                : "[bold green]PgSafe — Restore[/]"
-        );
+            AnsiConsole.MarkupLine(
+                config.DryRun
+                    ? "[bold yellow]PgSafe — Backup (DRY RUN)[/]"
+                    : "[bold green]PgSafe — Backup[/]"
+            );
+        }
+
 
         // Instance selection
         var instances = InstanceSelector.SelectInstances(config);
@@ -91,6 +95,9 @@ public static class RunRestore
         AnsiConsole.MarkupLine("[green]Starting restore…[/]");
         AnsiConsole.WriteLine();
 
+        // Measure total wall-clock time for the restore run
+        var swTotal = Stopwatch.StartNew();
+
         var restoreResult = RestoreProgressRunner.Run(
             instanceName,
             instance,
@@ -98,9 +105,14 @@ public static class RunRestore
             dumpFile
         );
 
+        swTotal.Stop();
+        var totalElapsed = swTotal.Elapsed; // total duration for all tasks
+
+        // Pass totalElapsed to the summary renderer
         RunSummaryRenderer.Render(
             restoreResult.Successes,
-            restoreResult.Failures
+            restoreResult.Failures,
+            totalElapsed
         );
     }
     
@@ -116,6 +128,7 @@ public static class RunRestore
         AnsiConsole.WriteLine();
 
         var result = new BackupRunResult();
+        var swTotal = Stopwatch.StartNew();
 
         try
         {
@@ -153,9 +166,12 @@ public static class RunRestore
                 }
             );
 
+            swTotal.Stop();
+
             RunSummaryRenderer.Render(
                 result.Successes,
-                result.Failures
+                result.Failures,
+                swTotal.Elapsed
             );
 
             AnsiConsole.MarkupLine(
@@ -165,9 +181,12 @@ public static class RunRestore
             return false;
         }
 
+        swTotal.Stop();
+
         RunSummaryRenderer.Render(
             result.Successes,
-            result.Failures
+            result.Failures,
+            swTotal.Elapsed
         );
 
         return true;

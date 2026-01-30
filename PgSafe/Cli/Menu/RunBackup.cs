@@ -3,6 +3,7 @@ using PgSafe.Cli.Common;
 using PgSafe.Cli.Runners;
 using PgSafe.Cli.Renderers;
 using Spectre.Console;
+using System.Diagnostics;
 
 namespace PgSafe.Cli.Menu;  
 
@@ -16,14 +17,17 @@ public static class RunBackup
         var config = ConfigLoaderUi.LoadOrShowError("pgsafe.yml");
         if (config is null)
             return;
-        
-        config.DryRun = DryRunSelector.Ask();
 
-        AnsiConsole.MarkupLine(
-            config.DryRun
-                ? "[bold yellow]PgSafe — Restore (DRY RUN)[/]"
-                : "[bold green]PgSafe — Restore[/]"
-        );
+        if (config.DryRun)
+        {
+            config.DryRun = DryRunSelector.Ask();
+
+            AnsiConsole.MarkupLine(
+                config.DryRun
+                    ? "[bold yellow]PgSafe — Backup (DRY RUN)[/]"
+                    : "[bold green]PgSafe — Backup[/]"
+            );
+        }
 
         var selectedInstances = InstanceSelector.SelectInstances(config);
         if (selectedInstances.Count == 0)
@@ -47,11 +51,18 @@ public static class RunBackup
 
         AnsiConsole.MarkupLine("\n[green]Starting backup…[/]\n");
 
+        // Measure total wall-clock time for the backup run
+        var swTotal = Stopwatch.StartNew();
+
         var result = BackupProgressRunner.Run(config);
+
+        swTotal.Stop();
+        var totalElapsed = swTotal.Elapsed;
 
         RunSummaryRenderer.Render(
             result.Successes,
-            result.Failures
+            result.Failures,
+            totalElapsed
         );
     }
 }

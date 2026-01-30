@@ -5,7 +5,7 @@ namespace PgSafe.Cli.Runners;
 
 public static class ProgressRunner
 {
-    public static void Run<TTarget>(
+    public static TimeSpan Run<TTarget>(
         IEnumerable<TTarget> targets,
         Func<TTarget, string> label,
         Action<TTarget> execute,
@@ -16,6 +16,7 @@ public static class ProgressRunner
     {
         var semaphore = new SemaphoreSlim(parallelism);
         var resultLock = new object();
+        var swTotal = Stopwatch.StartNew(); // <<< start total stopwatch
 
         AnsiConsole.Progress()
             .AutoClear(false)
@@ -29,10 +30,7 @@ public static class ProgressRunner
             {
                 var tasks = targets.Select(target =>
                 {
-                    var progressTask = ctx.AddTask(
-                        label(target),
-                        maxValue: 100
-                    );
+                    var progressTask = ctx.AddTask(label(target), maxValue: 100);
 
                     return Task.Run(async () =>
                     {
@@ -66,5 +64,9 @@ public static class ProgressRunner
 
                 Task.WaitAll(tasks);
             });
+
+        swTotal.Stop(); // <<< stop total stopwatch
+        return swTotal.Elapsed; // <<< return the total wall-clock time
     }
 }
+

@@ -1,4 +1,6 @@
 outputDir: ./backups
+parallelism: 2
+dryRun: false
 
 instances:
   db_prod:

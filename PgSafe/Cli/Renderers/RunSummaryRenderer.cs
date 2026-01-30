@@ -8,7 +8,8 @@ public static class RunSummaryRenderer
 {
     public static void Render<TSuccess, TFailure>(
         IReadOnlyList<TSuccess> successes,
-        IReadOnlyList<TFailure> failures
+        IReadOnlyList<TFailure> failures,
+        TimeSpan totalTime
     )
         where TSuccess : PgTaskResult
         where TFailure : PgTaskResult
@@ -33,6 +34,7 @@ public static class RunSummaryRenderer
             .AddColumn("Duration")
             .AddColumn("Result");
 
+        // Render successes
         foreach (var s in successes)
         {
             var row = new List<string>
@@ -57,6 +59,7 @@ public static class RunSummaryRenderer
             table.AddRow(row.ToArray());
         }
 
+        // Render failures
         foreach (var f in failures)
         {
             var row = new List<string>
@@ -77,11 +80,24 @@ public static class RunSummaryRenderer
             table.AddRow(row.ToArray());
         }
 
+        // Show main table
         AnsiConsole.Write(table);
 
-        AnsiConsole.MarkupLine(
-            $"\n[green]Successful:[/] {successes.Count}   " +
-            $"[red]Failed:[/] {failures.Count}"
+        // Totals table (uses WALL-CLOCK time)
+        var totalTable = new Table()
+            .AddColumn("[bold]Total Duration[/]")
+            .AddColumn("Successful")
+            .AddColumn("Failed");
+
+        totalTable.AddRow(
+            $"[bold]{TimeFormatter.Humanize(totalTime)}[/]",
+            $"[green]{successes.Count}[/]",
+            failures.Count > 0
+                ? $"[red]{failures.Count}[/]"
+                : failures.Count.ToString()
         );
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(totalTable);
     }
 }
