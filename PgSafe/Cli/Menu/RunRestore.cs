@@ -24,8 +24,6 @@ public static class RunRestore
         if (config is null)
             return;
         
-        AutoDiscoveryApplier.Apply(config);
-        
         if (config.DryRun)
         {
             config.DryRun = DryRunSelector.Ask();

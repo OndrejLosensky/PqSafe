@@ -17,8 +17,6 @@ public static class RunBackup
         var config = ConfigLoaderUi.LoadOrShowError("pgsafe.yml");
         if (config is null)
             return;
-
-        AutoDiscoveryApplier.Apply(config);
         
         if (config.DryRun)
         {
