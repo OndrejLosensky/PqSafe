@@ -68,7 +68,7 @@ public static class DumpFileSelector
                 : b.Metadata.PgVersion;
 
             // Only show formatted timestamp, size, PG version
-            return $"{timestamp} — {sizeStr} — PG {pgVersion}";
+            return $"{timestamp} — {sizeStr} — {b.Metadata.TableCount} tables / {b.Metadata.RowCount} rows — PG {pgVersion}";
         }));
 
         // Prompt user to select a backup

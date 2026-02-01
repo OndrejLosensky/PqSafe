@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using PgSafe.Config;
 using PgSafe.Models.Backup;
+using Npgsql;
 
 namespace PgSafe.Services;
 
@@ -160,6 +161,8 @@ public static class BackupService
     {
         pgVersion = "unknown";
     }
+    
+    var (tables, rows) = GetDatabaseStats(instance, databaseName);
 
     var meta = new BackupMetadata
     {
@@ -169,7 +172,9 @@ public static class BackupService
         CreatedAt = DateTime.UtcNow,
         SizeBytes = new FileInfo(finalFile).Length,
         Format = "custom",
-        PgVersion = pgVersion
+        PgVersion = pgVersion,
+        TableCount = tables,
+        RowCount = rows
     };
 
     var metaPath = Path.Combine(backupDir, "meta.json");
@@ -195,4 +200,34 @@ public static class BackupService
         Metadata = meta
     };
 }
+
+    /// <summary>
+    /// Retrieves statistics for a specific PostgreSQL database, including the number of tables
+    /// and the total number of rows across all user tables in the database.
+    /// </summary>
+    /// <param name="instance">Configuration for the PostgreSQL instance containing the database.</param>
+    /// <param name="database">Name of the database for which statistics are being retrieved.</param>
+    /// <returns>
+    /// - The number of tables in the specified database.
+    /// - The total number of rows across all user tables in the specified database.
+    /// </returns>
+    private static (int tableCount, long rowCount) GetDatabaseStats(PgInstanceConfig instance, string database)
+    {
+        using var conn = new NpgsqlConnection($"Host={instance.Host};Port={instance.Port};Username={instance.Username};Password={instance.Password};Database={database}");
+        conn.Open();
+
+        // Count tables
+        var tableCount = 0;
+        using (var cmd = new NpgsqlCommand("SELECT count(*) FROM information_schema.tables WHERE table_schema='public';", conn))
+            tableCount = Convert.ToInt32(cmd.ExecuteScalar());
+
+        // Count rows across all tables
+        long rowCount = 0;
+        using (var cmd = new NpgsqlCommand(
+                   @"SELECT sum(n_live_tup) 
+          FROM pg_stat_user_tables;", conn))
+            rowCount = Convert.ToInt64(cmd.ExecuteScalar());
+
+        return (tableCount, rowCount);
+    }
 }
