@@ -23,6 +23,7 @@
 
     <ItemGroup>
       <Folder Include="backups\" />
+      <Folder Include="backups\db1\" />
     </ItemGroup>
 
 </Project>

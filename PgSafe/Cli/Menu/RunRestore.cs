@@ -23,18 +23,17 @@ public static class RunRestore
         var config = ConfigLoaderUi.LoadOrShowError("pgsafe.yml");
         if (config is null)
             return;
-        
+
         if (config.DryRun)
         {
             config.DryRun = DryRunSelector.Ask();
 
             AnsiConsole.MarkupLine(
                 config.DryRun
-                    ? "[bold yellow]PgSafe — Backup (DRY RUN)[/]"
-                    : "[bold green]PgSafe — Backup[/]"
+                    ? "[bold yellow]PgSafe — Restore (DRY RUN)[/]"
+                    : "[bold green]PgSafe — Restore[/]"
             );
         }
-
 
         // Instance selection
         var instances = InstanceSelector.SelectInstances(config);
@@ -43,6 +42,7 @@ public static class RunRestore
 
         var instanceName = instances.First();
         var instance = config.Instances[instanceName];
+
 
         // Database selection (single)
         var dbSelection = DatabaseSelector.SelectDatabases(
@@ -56,20 +56,20 @@ public static class RunRestore
 
         var (_, databaseName) = dbSelection.First();
 
-        // Dump selection
-        var dumpFile = DumpFileSelector.SelectDumpFile(
+        // Dump/backup selection
+        var backupSet = DumpFileSelector.SelectDumpFile(
             config,
             instanceName,
             databaseName
         );
 
-        if (dumpFile == null)
+        if (backupSet == null)
             return;
 
         var confirmed = RestoreConfirmation.Ask(
             instanceName,
             databaseName,
-            dumpFile,
+            backupSet.DumpPath,
             out var createSafetyBackup
         );
 
@@ -78,9 +78,8 @@ public static class RunRestore
             AnsiConsole.MarkupLine("[yellow]Restore cancelled.[/]");
             return;
         }
-        
-        var restoreTargetMode = RestoreTargetSelector.Ask();
 
+        var restoreTargetMode = RestoreTargetSelector.Ask();
         string targetDatabaseName;
 
         if (restoreTargetMode == RestoreTargetMode.ExistingDatabase)
@@ -95,25 +94,15 @@ public static class RunRestore
         // SAFETY BACKUP
         if (createSafetyBackup)
         {
-            if (!RunSafetyBackup(
-                    config,
-                    instanceName,
-                    instance,
-                    databaseName
-                ))
+            if (!RunSafetyBackup(config, instanceName, instance, databaseName))
                 return;
         }
-        
+
+        // Create new database if needed
         if (restoreTargetMode == RestoreTargetMode.NewDatabase)
         {
-            AnsiConsole.MarkupLine(
-                $"[green]Creating database '{targetDatabaseName}'…[/]"
-            );
-
-            DatabaseProvisioningService.CreateDatabase(
-                instance,
-                targetDatabaseName
-            );
+            AnsiConsole.MarkupLine($"[green]Creating database '{targetDatabaseName}'…[/]");
+            DatabaseProvisioningService.CreateDatabase(instance, targetDatabaseName);
         }
 
         // RESTORE
@@ -127,28 +116,24 @@ public static class RunRestore
                 : $"[green]Restoring into NEW database:[/] [bold]{targetDatabaseName}[/]"
         );
         AnsiConsole.WriteLine();
-        
-        // Measure total wall-clock time for the restore run
+
         var swTotal = Stopwatch.StartNew();
 
         var restoreResult = RestoreProgressRunner.Run(
-            instanceName,
+            backupSet,
             instance,
-            targetDatabaseName,
-            dumpFile
+            targetDatabaseName
         );
 
         swTotal.Stop();
-        var totalElapsed = swTotal.Elapsed; // total duration for all tasks
 
-        // Pass totalElapsed to the summary renderer
         RunSummaryRenderer.Render(
             restoreResult.Successes,
             restoreResult.Failures,
-            totalElapsed
+            swTotal.Elapsed
         );
     }
-    
+
     private static bool RunSafetyBackup(
         PgSafeConfig config,
         string instanceName,
@@ -166,62 +151,42 @@ public static class RunRestore
         try
         {
             var sw = Stopwatch.StartNew();
-
-            var file = BackupService.RunSingle(
+            var backupSet = BackupService.RunSingle(
                 config.OutputDir,
                 instanceName,
                 instance,
                 databaseName
             );
-
             sw.Stop();
 
-            result.Successes.Add(
-                new BackupSuccess
-                {
-                    Instance = instanceName,
-                    Database = databaseName,
-                    FilePath = file,
-                    FileSizeBytes = FileUtils.GetFileSize(file),
-                    Duration = sw.Elapsed
-                }
-            );
+            result.Successes.Add(new BackupSuccess
+            {
+                Instance = instanceName,
+                Database = databaseName,
+                FilePath = backupSet.DumpPath,
+                FileSizeBytes = FileUtils.GetFileSize(backupSet.DumpPath),
+                Duration = sw.Elapsed
+            });
         }
         catch (Exception ex)
         {
-            result.Failures.Add(
-                new BackupFailure
-                {
-                    Instance = instanceName,
-                    Database = databaseName,
-                    Error = ex.Message,
-                    Duration = TimeSpan.Zero
-                }
-            );
+            result.Failures.Add(new BackupFailure
+            {
+                Instance = instanceName,
+                Database = databaseName,
+                Error = ex.Message,
+                Duration = TimeSpan.Zero
+            });
 
             swTotal.Stop();
+            RunSummaryRenderer.Render(result.Successes, result.Failures, swTotal.Elapsed);
 
-            RunSummaryRenderer.Render(
-                result.Successes,
-                result.Failures,
-                swTotal.Elapsed
-            );
-
-            AnsiConsole.MarkupLine(
-                "[red]Safety backup failed. Restore aborted.[/]"
-            );
-
+            AnsiConsole.MarkupLine("[red]Safety backup failed. Restore aborted.[/]");
             return false;
         }
 
         swTotal.Stop();
-
-        RunSummaryRenderer.Render(
-            result.Successes,
-            result.Failures,
-            swTotal.Elapsed
-        );
-
+        RunSummaryRenderer.Render(result.Successes, result.Failures, swTotal.Elapsed);
         return true;
     }
 }

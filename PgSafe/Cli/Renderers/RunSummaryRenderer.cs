@@ -1,6 +1,7 @@
 using PgSafe.Models;
 using PgSafe.Utils;
 using Spectre.Console;
+using System.Reflection;
 
 namespace PgSafe.Cli.Renderers;
 
@@ -20,6 +21,8 @@ public static class RunSummaryRenderer
         var showFile = successes.Any(s => s.FilePath != null);
         var showSize = successes.Any(s => s.FileSizeBytes != null);
 
+        var showError = failures.Any(f => !string.IsNullOrWhiteSpace(TryGetErrorText(f)));
+
         var table = new Table()
             .AddColumn("Instance")
             .AddColumn("Database");
@@ -33,6 +36,9 @@ public static class RunSummaryRenderer
         table
             .AddColumn("Duration")
             .AddColumn("Result");
+
+        if (showError)
+            table.AddColumn("Error");
 
         // Render successes
         foreach (var s in successes)
@@ -56,6 +62,9 @@ public static class RunSummaryRenderer
             row.Add(TimeFormatter.Humanize(s.Duration));
             row.Add("[green]OK[/]");
 
+            if (showError)
+                row.Add("-");
+
             table.AddRow(row.ToArray());
         }
 
@@ -77,13 +86,17 @@ public static class RunSummaryRenderer
             row.Add(TimeFormatter.Humanize(f.Duration));
             row.Add("[red]FAILED[/]");
 
+            if (showError)
+            {
+                var err = TryGetErrorText(f);
+                row.Add(string.IsNullOrWhiteSpace(err) ? "-" : Markup.Escape(TrimOneLine(err!, 160)));
+            }
+
             table.AddRow(row.ToArray());
         }
 
-        // Show main table
         AnsiConsole.Write(table);
 
-        // Totals table (uses WALL-CLOCK time)
         var totalTable = new Table()
             .AddColumn("[bold]Total Duration[/]")
             .AddColumn("Successful")
@@ -99,5 +112,24 @@ public static class RunSummaryRenderer
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(totalTable);
+    }
+
+    private static string? TryGetErrorText<T>(T obj)
+    {
+        var t = obj?.GetType();
+        if (t is null) return null;
+
+        var prop =
+            t.GetProperty("Error", BindingFlags.Public | BindingFlags.Instance)
+            ?? t.GetProperty("Message", BindingFlags.Public | BindingFlags.Instance)
+            ?? t.GetProperty("ErrorMessage", BindingFlags.Public | BindingFlags.Instance);
+
+        return prop?.GetValue(obj) as string;
+    }
+
+    private static string TrimOneLine(string s, int maxLen)
+    {
+        var oneLine = s.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ").Trim();
+        return oneLine.Length <= maxLen ? oneLine : oneLine.Substring(0, maxLen - 1) + "…";
     }
 }

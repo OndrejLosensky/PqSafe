@@ -8,8 +8,8 @@ public class BackupTarget
     public PgInstanceConfig InstanceConfig { get; }
     public string DatabaseName { get; }
 
-    // Runtime result (filled by runner)
-    public string? FilePath { get; set; }
+    // Runtime result: the completed backup
+    public BackupSet? BackupSet { get; set; }
 
     public BackupTarget(
         string instanceName,

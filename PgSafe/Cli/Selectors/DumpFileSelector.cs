@@ -1,57 +1,80 @@
 using Spectre.Console;
 using PgSafe.Config;
+using PgSafe.Models.Backup;
+using PgSafe.Services;
+using System.Globalization;
 
 namespace PgSafe.Cli.Selectors;
 
 public static class DumpFileSelector
 {
-    private const string BackItem = "< Back";
+    private const string BackItem = "< Back>";
 
-    public static string? SelectDumpFile(
+    public static BackupSet? SelectDumpFile(
         PgSafeConfig config,
         string instance,
         string database
     )
     {
-        var baseDir = Path.Combine(
-            config.OutputDir,
-            instance,
-            database
-        );
+        var repo = new BackupRepositoryService(config.OutputDir);
 
-        if (!Directory.Exists(baseDir))
+        // Get all backups, sorted newest first
+        var backups = repo.GetAllBackups(instance, database)
+                          .OrderByDescending(b =>
+                          {
+                              if (DateTime.TryParseExact(
+                                  b.BackupId,
+                                  "yyyy-MM-dd_HH-mm-ss",
+                                  CultureInfo.InvariantCulture,
+                                  DateTimeStyles.None,
+                                  out var dt))
+                                  return dt;
+
+                              return DateTime.MinValue;
+                          })
+                          .ToList();
+
+        if (backups.Count == 0)
         {
-            AnsiConsole.MarkupLine(
-                $"[red]No backups found for {instance}/{database}[/]"
-            );
+            AnsiConsole.MarkupLine($"[red]No backups found for {instance}/{database}[/]");
             return null;
         }
 
-        var dumps = Directory
-            .GetFiles(baseDir, "*.dump")
-            .OrderByDescending(Path.GetFileName)
-            .ToList();
-
-        if (dumps.Count == 0)
-        {
-            AnsiConsole.MarkupLine(
-                $"[red]No dump files found for {instance}/{database}[/]"
-            );
-            return null;
-        }
-
-        // Single dump → no prompt
-        if (dumps.Count == 1)
-            return dumps[0];
-
+        // Build menu choices
         var choices = new List<string> { BackItem };
-        choices.AddRange(
-            dumps.Select(Path.GetFileName!)
-        );
+        choices.AddRange(backups.Select(b =>
+        {
+            // Format size
+            var sizeKb = b.Metadata.SizeBytes / 1024.0;
+            string sizeStr = sizeKb > 1024
+                ? $"{sizeKb / 1024:F1} MB"
+                : $"{sizeKb:F0} KB";
 
+            // Format timestamp nicely
+            string timestamp = b.BackupId;
+            if (DateTime.TryParseExact(
+                b.BackupId,
+                "yyyy-MM-dd_HH-mm-ss",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var dt))
+            {
+                timestamp = dt.ToString("yyyy-MM-dd HH:mm:ss");
+            }
+
+            // PG version
+            string pgVersion = string.IsNullOrWhiteSpace(b.Metadata.PgVersion)
+                ? "unknown"
+                : b.Metadata.PgVersion;
+
+            // Only show formatted timestamp, size, PG version
+            return $"{timestamp} — {sizeStr} — PG {pgVersion}";
+        }));
+
+        // Prompt user to select a backup
         var selected = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
-                .Title($"Select dump for [green]{instance}/{database}[/]")
+                .Title($"Select backup for [green]{instance}/{database}[/]")
                 .PageSize(10)
                 .AddChoices(choices)
         );
@@ -59,6 +82,8 @@ public static class DumpFileSelector
         if (selected == BackItem)
             return null;
 
-        return Path.Combine(baseDir, selected);
+        // Map selected index back to BackupSet
+        int selectedIndex = choices.IndexOf(selected) - 1; // -1 because of BackItem
+        return backups[selectedIndex];
     }
 }

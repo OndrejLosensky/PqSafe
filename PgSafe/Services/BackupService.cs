@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using PgSafe.Config;
 using PgSafe.Models.Backup;
 
@@ -53,7 +54,7 @@ public static class BackupService
                     {
                         Instance = target.instance,
                         Database = target.db,
-                        FilePath = file,
+                        FilePath = file.DumpPath,
                         Duration = sw.Elapsed
                     }
                 );
@@ -75,7 +76,7 @@ public static class BackupService
         return result;
     }
     
-    public static string  RunSingle(
+    public static BackupSet RunSingle(
         string outputDir,
         string instanceName,
         PgInstanceConfig instance,
@@ -85,55 +86,113 @@ public static class BackupService
         return BackupDatabase(outputDir, instanceName, instance, databaseName);
     }
 
+    private static BackupSet BackupDatabase(
+    string outputDir,
+    string instanceName,
+    PgInstanceConfig instance,
+    string databaseName
+)
+{
+    var backupId = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
 
+    var backupDir = Path.Combine(
+        outputDir,
+        instanceName,
+        databaseName,
+        backupId
+    );
 
-    private static string BackupDatabase(
-        string outputDir,
-        string instanceName,
-        PgInstanceConfig instance,
-        string databaseName
-    )
+    Directory.CreateDirectory(backupDir);
+
+    var finalFile = Path.Combine(backupDir, $"{databaseName}.dump");
+    var tempFile = finalFile + ".tmp";
+
+    var psi = new ProcessStartInfo
     {
-        var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
+        FileName = "pg_dump",
+        Arguments =
+            $"-h {instance.Host} " +
+            $"-p {instance.Port} " +
+            $"-U {instance.Username} " +
+            $"-F c " +
+            $"-f \"{tempFile}\" " +
+            databaseName,
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false
+    };
 
-        var targetDir = Path.Combine(outputDir, instanceName, databaseName);
-        Directory.CreateDirectory(targetDir);
+    psi.Environment["PGPASSWORD"] = instance.Password;
 
-        var finalFile = Path.Combine(targetDir, $"{timestamp}.dump");
-        var tempFile = finalFile + ".tmp";
+    using var process = Process.Start(psi)!;
+    process.WaitForExit();
 
-        var psi = new ProcessStartInfo
+    if (process.ExitCode != 0)
+    {
+        var error = process.StandardError.ReadToEnd();
+
+        if (File.Exists(tempFile))
+            File.Delete(tempFile);
+
+        throw new Exception(error);
+    }
+
+    File.Move(tempFile, finalFile);
+
+    // Get PG version
+    string pgVersion;
+    try
+    {
+        var psiVersion = new ProcessStartInfo
         {
             FileName = "pg_dump",
-            Arguments =
-                $"-h {instance.Host} " +
-                $"-p {instance.Port} " +
-                $"-U {instance.Username} " +
-                $"-F c " +
-                $"-f \"{tempFile}\" " +
-                databaseName,
-            RedirectStandardError = true,
+            Arguments = "--version",
             RedirectStandardOutput = true,
+            RedirectStandardError = true,
             UseShellExecute = false
         };
 
-        psi.Environment["PGPASSWORD"] = instance.Password;
-
-        using var process = Process.Start(psi)!;
-        process.WaitForExit();
-
-        if (process.ExitCode != 0)
-        {
-            var error = process.StandardError.ReadToEnd();
-
-            if (File.Exists(tempFile))
-                File.Delete(tempFile);
-
-            throw new Exception(error);
-        }
-
-        File.Move(tempFile, finalFile);
-        
-        return finalFile;
+        using var procVersion = Process.Start(psiVersion)!;
+        procVersion.WaitForExit();
+        pgVersion = procVersion.StandardOutput.ReadToEnd().Trim();
     }
+    catch
+    {
+        pgVersion = "unknown";
+    }
+
+    var meta = new BackupMetadata
+    {
+        Instance = instanceName,
+        Database = databaseName,
+        BackupId = backupId,
+        CreatedAt = DateTime.UtcNow,
+        SizeBytes = new FileInfo(finalFile).Length,
+        Format = "custom",
+        PgVersion = pgVersion
+    };
+
+    var metaPath = Path.Combine(backupDir, "meta.json");
+
+    File.WriteAllText(
+        metaPath,
+        JsonSerializer.Serialize(meta, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        })
+    );
+
+    return new BackupSet
+    {
+        Instance = instanceName,
+        Database = databaseName,
+        BackupId = backupId,
+
+        BackupDirectory = backupDir,
+        DumpPath = finalFile,
+        MetaPath = metaPath,
+
+        Metadata = meta
+    };
+}
 }

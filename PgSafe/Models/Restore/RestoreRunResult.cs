@@ -5,6 +5,12 @@ public record RestoreSuccess : PgTaskResult;
 public record RestoreFailure : PgTaskResult
 {
     public required string Error { get; init; }
+
+    // Longer diagnostic: exception stack trace, inner exception, etc.
+    public string? Details { get; init; }
+
+    // Where we wrote Details (helpful when Details is too long for the table)
+    public string? LogFilePath { get; init; }
 }
 
 public class RestoreRunResult

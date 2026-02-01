@@ -47,7 +47,8 @@ public static class BackupProgressRunner
                 if (config.DryRun)
                     return;
 
-                t.FilePath = BackupService.RunSingle(
+                // Run backup and store the BackupSet
+                t.BackupSet = BackupService.RunSingle(
                     config.OutputDir,
                     t.InstanceName,
                     t.InstanceConfig,
@@ -59,9 +60,9 @@ public static class BackupProgressRunner
             {
                 Instance = t.InstanceName,
                 Database = t.DatabaseName,
-                FilePath = t.FilePath,
-                FileSizeBytes = t.FilePath != null
-                    ? FileUtils.GetFileSize(t.FilePath)
+                FilePath = t.BackupSet?.DumpPath,
+                FileSizeBytes = t.BackupSet != null
+                    ? FileUtils.GetFileSize(t.BackupSet.DumpPath)
                     : null,
                 Duration = d
             }),
