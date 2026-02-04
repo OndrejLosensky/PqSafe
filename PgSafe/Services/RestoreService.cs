@@ -71,7 +71,8 @@ public static class RestoreService
         string instanceName,
         PgInstanceConfig instance,
         string databaseName,
-        string dumpFile
+        string dumpFile,
+        Action<double>? progressCallback = null
     )
     {
         RestoreDatabase(

@@ -33,6 +33,7 @@ public static class Menu
                     .AddChoices(
                         "Backup databases",
                         "Restore databases",
+                        "Migrate databases",
                         "Exit"
                     )
             );
@@ -45,6 +46,10 @@ public static class Menu
 
                 case "Restore databases":
                     ShowRestore();
+                    break;
+                
+                case "Migrate databases":
+                    ShowMigrate();
                     break;
 
                 case "Exit":
@@ -63,6 +68,12 @@ public static class Menu
     private static void ShowRestore()
     {
         RunRestore.Start(); 
+        Pause();
+    }
+    
+    private static void ShowMigrate()
+    {
+        RunMigration.Start();
         Pause();
     }
 

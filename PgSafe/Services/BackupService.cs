@@ -41,7 +41,7 @@ public static class BackupService
             {
                 var sw = Stopwatch.StartNew();
 
-                var file = BackupDatabase(
+                var file = RunSingle(
                     config.OutputDir,
                     target.instance,
                     target.cfg,
@@ -71,162 +71,179 @@ public static class BackupService
                     }
                 );
             }
-
         }
 
         return result;
     }
-    
+
     public static BackupSet RunSingle(
         string outputDir,
         string instanceName,
         PgInstanceConfig instance,
-        string databaseName
+        string databaseName,
+        Action<double>? progressCallback = null
     )
     {
-        return BackupDatabase(outputDir, instanceName, instance, databaseName);
+        return BackupDatabase(
+            outputDir,
+            instanceName,
+            instance,
+            databaseName,
+            progressCallback
+        );
     }
 
     private static BackupSet BackupDatabase(
-    string outputDir,
-    string instanceName,
-    PgInstanceConfig instance,
-    string databaseName
-)
-{
-    var backupId = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
-
-    var backupDir = Path.Combine(
-        outputDir,
-        instanceName,
-        databaseName,
-        backupId
-    );
-
-    Directory.CreateDirectory(backupDir);
-
-    var finalFile = Path.Combine(backupDir, $"{databaseName}.dump");
-    var tempFile = finalFile + ".tmp";
-
-    var psi = new ProcessStartInfo
+        string outputDir,
+        string instanceName,
+        PgInstanceConfig instance,
+        string databaseName,
+        Action<double>? progressCallback
+    )
     {
-        FileName = "pg_dump",
-        Arguments =
-            $"-h {instance.Host} " +
-            $"-p {instance.Port} " +
-            $"-U {instance.Username} " +
-            $"-F c " +
-            $"-f \"{tempFile}\" " +
+        // 0% — starting
+        progressCallback?.Invoke(0);
+
+        var backupId = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
+
+        var backupDir = Path.Combine(
+            outputDir,
+            instanceName,
             databaseName,
-        RedirectStandardError = true,
-        RedirectStandardOutput = true,
-        UseShellExecute = false
-    };
+            backupId
+        );
 
-    psi.Environment["PGPASSWORD"] = instance.Password;
+        Directory.CreateDirectory(backupDir);
 
-    using var process = Process.Start(psi)!;
-    process.WaitForExit();
+        var finalFile = Path.Combine(backupDir, $"{databaseName}.dump");
+        var tempFile = finalFile + ".tmp";
 
-    if (process.ExitCode != 0)
-    {
-        var error = process.StandardError.ReadToEnd();
+        // 10% — preparation done
+        progressCallback?.Invoke(10);
 
-        if (File.Exists(tempFile))
-            File.Delete(tempFile);
-
-        throw new Exception(error);
-    }
-
-    File.Move(tempFile, finalFile);
-
-    // Get PG version
-    string pgVersion;
-    try
-    {
-        var psiVersion = new ProcessStartInfo
+        var psi = new ProcessStartInfo
         {
             FileName = "pg_dump",
-            Arguments = "--version",
-            RedirectStandardOutput = true,
+            Arguments =
+                $"-h {instance.Host} " +
+                $"-p {instance.Port} " +
+                $"-U {instance.Username} " +
+                $"-F c " +
+                $"-f \"{tempFile}\" " +
+                databaseName,
             RedirectStandardError = true,
+            RedirectStandardOutput = true,
             UseShellExecute = false
         };
 
-        using var procVersion = Process.Start(psiVersion)!;
-        procVersion.WaitForExit();
-        pgVersion = procVersion.StandardOutput.ReadToEnd().Trim();
-    }
-    catch
-    {
-        pgVersion = "unknown";
-    }
-    
-    var (tables, rows) = GetDatabaseStats(instance, databaseName);
+        psi.Environment["PGPASSWORD"] = instance.Password;
 
-    var meta = new BackupMetadata
-    {
-        Instance = instanceName,
-        Database = databaseName,
-        BackupId = backupId,
-        CreatedAt = DateTime.UtcNow,
-        SizeBytes = new FileInfo(finalFile).Length,
-        Format = "custom",
-        PgVersion = pgVersion,
-        TableCount = tables,
-        RowCount = rows
-    };
+        using var process = Process.Start(psi)!;
+        process.WaitForExit();
 
-    var metaPath = Path.Combine(backupDir, "meta.json");
-
-    File.WriteAllText(
-        metaPath,
-        JsonSerializer.Serialize(meta, new JsonSerializerOptions
+        if (process.ExitCode != 0)
         {
-            WriteIndented = true
-        })
-    );
+            var error = process.StandardError.ReadToEnd();
 
-    return new BackupSet
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+
+            throw new Exception(error);
+        }
+
+        File.Move(tempFile, finalFile);
+
+        // 90% — dump completed
+        progressCallback?.Invoke(90);
+
+        // Get pg_dump version
+        string pgVersion;
+        try
+        {
+            var psiVersion = new ProcessStartInfo
+            {
+                FileName = "pg_dump",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+
+            using var procVersion = Process.Start(psiVersion)!;
+            procVersion.WaitForExit();
+            pgVersion = procVersion.StandardOutput.ReadToEnd().Trim();
+        }
+        catch
+        {
+            pgVersion = "unknown";
+        }
+
+        var (tables, rows) = GetDatabaseStats(instance, databaseName);
+
+        var meta = new BackupMetadata
+        {
+            Instance = instanceName,
+            Database = databaseName,
+            BackupId = backupId,
+            CreatedAt = DateTime.UtcNow,
+            SizeBytes = new FileInfo(finalFile).Length,
+            Format = "custom",
+            PgVersion = pgVersion,
+            TableCount = tables,
+            RowCount = rows
+        };
+
+        var metaPath = Path.Combine(backupDir, "meta.json");
+
+        File.WriteAllText(
+            metaPath,
+            JsonSerializer.Serialize(meta, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            })
+        );
+
+        // 100% — fully done
+        progressCallback?.Invoke(100);
+
+        return new BackupSet
+        {
+            Instance = instanceName,
+            Database = databaseName,
+            BackupId = backupId,
+
+            BackupDirectory = backupDir,
+            DumpPath = finalFile,
+            MetaPath = metaPath,
+
+            Metadata = meta
+        };
+    }
+
+    private static (int tableCount, long rowCount) GetDatabaseStats(
+        PgInstanceConfig instance,
+        string database
+    )
     {
-        Instance = instanceName,
-        Database = databaseName,
-        BackupId = backupId,
+        using var conn = new NpgsqlConnection(
+            $"Host={instance.Host};Port={instance.Port};Username={instance.Username};Password={instance.Password};Database={database}"
+        );
 
-        BackupDirectory = backupDir,
-        DumpPath = finalFile,
-        MetaPath = metaPath,
-
-        Metadata = meta
-    };
-}
-
-    /// <summary>
-    /// Retrieves statistics for a specific PostgreSQL database, including the number of tables
-    /// and the total number of rows across all user tables in the database.
-    /// </summary>
-    /// <param name="instance">Configuration for the PostgreSQL instance containing the database.</param>
-    /// <param name="database">Name of the database for which statistics are being retrieved.</param>
-    /// <returns>
-    /// - The number of tables in the specified database.
-    /// - The total number of rows across all user tables in the specified database.
-    /// </returns>
-    private static (int tableCount, long rowCount) GetDatabaseStats(PgInstanceConfig instance, string database)
-    {
-        using var conn = new NpgsqlConnection($"Host={instance.Host};Port={instance.Port};Username={instance.Username};Password={instance.Password};Database={database}");
         conn.Open();
 
-        // Count tables
-        var tableCount = 0;
-        using (var cmd = new NpgsqlCommand("SELECT count(*) FROM information_schema.tables WHERE table_schema='public';", conn))
-            tableCount = Convert.ToInt32(cmd.ExecuteScalar());
+        var tableCount = Convert.ToInt32(
+            new NpgsqlCommand(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';",
+                conn
+            ).ExecuteScalar()
+        );
 
-        // Count rows across all tables
-        long rowCount = 0;
-        using (var cmd = new NpgsqlCommand(
-                   @"SELECT sum(n_live_tup) 
-          FROM pg_stat_user_tables;", conn))
-            rowCount = Convert.ToInt64(cmd.ExecuteScalar());
+        var rowCount = Convert.ToInt64(
+            new NpgsqlCommand(
+                "SELECT sum(n_live_tup) FROM pg_stat_user_tables;",
+                conn
+            ).ExecuteScalar()
+        );
 
         return (tableCount, rowCount);
     }
