@@ -8,13 +8,38 @@ public static class MigrationConfirmation
         string sourceInstance,
         string sourceDatabase,
         string targetInstance,
-        string targetDatabase
+        string targetDatabase,
+        out bool createSafetyBackup
     )
     {
         AnsiConsole.WriteLine();
+
+        var panel = new Panel(
+            $"""
+             [yellow]You are about to migrate a database[/]
+
+             [bold]Source:[/] {sourceInstance}/{sourceDatabase}
+             [bold]Target:[/] {targetInstance}/{targetDatabase}
+
+             [red]⚠ This may overwrite data on the target database![/]
+             """
+        )
+        {
+            Header = new PanelHeader("[bold red]Confirm migration[/]", Justify.Center),
+            Border = BoxBorder.Double
+        };
+
+        AnsiConsole.Write(panel);
+        AnsiConsole.WriteLine();
+
+        createSafetyBackup = AnsiConsole.Confirm(
+            "Create a safety backup of the target database before migrating?",
+            defaultValue: true
+        );
+
         return AnsiConsole.Confirm(
-            $"Are you sure you want to migrate [bold]{sourceInstance}/{sourceDatabase}[/] " +
-            $"to [bold]{targetInstance}/{targetDatabase}[/]?"
+            "[red]Do you really want to continue?[/]",
+            defaultValue: false
         );
     }
 }

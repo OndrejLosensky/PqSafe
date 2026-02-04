@@ -6,6 +6,8 @@ namespace PgSafe.Cli.Selectors;
 
 public static class DatabaseSelector
 {
+    private const string SystemDatabase = "postgres";
+
     public static List<(string instance, string database)> SelectDatabases(
         PgSafeConfig config,
         List<string> selectedInstances,
@@ -27,11 +29,16 @@ public static class DatabaseSelector
                     $"[grey]Auto-detecting databases for instance [bold]{instanceName}[/]…[/]"
                 );
 
-                databases = DatabaseDiscoveryService.DiscoverDatabases(instance);
+                databases = DatabaseDiscoveryService
+                    .DiscoverDatabases(instance)
+                    .Where(db => db != SystemDatabase)
+                    .ToList();
             }
             else
             {
-                databases = instance.Databases.Keys.ToList();
+                databases = instance.Databases.Keys
+                    .Where(db => db != SystemDatabase)
+                    .ToList();
             }
 
             foreach (var dbName in databases)
@@ -43,16 +50,16 @@ public static class DatabaseSelector
         if (allDbs.Count == 0)
             return [];
 
-        // If only one DB exists, return it directly
-        if (allDbs.Count == 1)
+        // ⚠️ Important: DO NOT auto-return single DB in migration context
+        if (allDbs.Count == 1 && !singleOnly)
             return allDbs;
 
-        // RESTORE MODE → exactly one DB
+        // RESTORE / MIGRATION MODE → exactly one DB
         if (singleOnly)
         {
             var selected = AnsiConsole.Prompt(
                 new SelectionPrompt<(string instance, string database)>()
-                    .Title("Select database to restore into")
+                    .Title("Select database")
                     .UseConverter(x => $"{x.instance}/{x.database}")
                     .AddChoices(allDbs)
             );

@@ -54,7 +54,7 @@ public static class RunMigration
 
         var (_, sourceDatabaseName) = sourceDbSelection.First();
 
-        // --- Target instance & database ---
+        // --- Target instance ---
         var targetInstances = InstanceSelector.SelectInstances(config);
         if (targetInstances.Count == 0)
             return;
@@ -62,23 +62,42 @@ public static class RunMigration
         var targetInstanceName = targetInstances.First();
         var targetInstance = config.Instances[targetInstanceName];
 
+        // --- Target database selection / creation ---
         var targetDbSelection = DatabaseSelector.SelectDatabases(
             config,
             new List<string> { targetInstanceName },
             singleOnly: true
         );
 
+        string targetDatabaseName;
+
         if (targetDbSelection.Count == 0)
-            return;
+        {
+            // No database found → ask for new name
+            targetDatabaseName = NewDatabaseNamePrompt.Ask();
+        }
+        else
+        {
+            // Ask whether to use existing or create new
+            var restoreTargetMode = RestoreTargetSelector.Ask();
 
-        var (_, targetDatabaseName) = targetDbSelection.First();
+            if (restoreTargetMode == RestoreTargetMode.ExistingDatabase)
+            {
+                (_, targetDatabaseName) = targetDbSelection.First();
+            }
+            else
+            {
+                targetDatabaseName = NewDatabaseNamePrompt.Ask();
+            }
+        }
 
-        // Confirm migration
+        // --- Confirm migration and optionally create safety backup ---
         var confirmed = MigrationConfirmation.Ask(
             sourceInstanceName,
             sourceDatabaseName,
             targetInstanceName,
-            targetDatabaseName
+            targetDatabaseName,
+            out var createSafetyBackup
         );
 
         if (!confirmed)
@@ -87,11 +106,25 @@ public static class RunMigration
             return;
         }
 
-        // Create target DB if needed
+        // --- Safety backup if requested ---
+        if (createSafetyBackup)
+        {
+            if (!RunSafetyBackup(config, targetInstanceName, targetInstance, targetDatabaseName))
+                return;
+        }
+
+
+        // --- Create target DB if missing ---
         if (!DatabaseUtils.DatabaseExists(targetInstance, targetDatabaseName))
         {
-            AnsiConsole.MarkupLine($"[green]Creating target database '{targetDatabaseName}'…[/]");
-            DatabaseProvisioningService.CreateDatabase(targetInstance, targetDatabaseName);
+            AnsiConsole.MarkupLine(
+                $"[green]Creating target database '{targetDatabaseName}'…[/]"
+            );
+
+            DatabaseProvisioningService.CreateDatabase(
+                targetInstance,
+                targetDatabaseName
+            );
         }
 
         // --- Migration ---
@@ -116,5 +149,37 @@ public static class RunMigration
             migrationResult.Failures,
             swTotal.Elapsed
         );
+    }
+
+    private static bool RunSafetyBackup(
+        PgSafeConfig config,
+        string instanceName,
+        PgInstanceConfig instance,
+        string databaseName
+    )
+    {
+        try
+        {
+            AnsiConsole.MarkupLine(
+                $"[yellow]Creating safety backup of '{instanceName}/{databaseName}'…[/]"
+            );
+
+            BackupService.RunSingle(
+                config.OutputDir,
+                instanceName,
+                instance,
+                databaseName
+            );
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]Safety backup failed:[/] {ex.Message}"
+            );
+
+            return false;
+        }
     }
 }
