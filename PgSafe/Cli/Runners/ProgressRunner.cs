@@ -5,10 +5,35 @@ namespace PgSafe.Cli.Runners;
 
 public static class ProgressRunner
 {
+    // Existing API (kept for compatibility)
     public static TimeSpan Run<TTarget>(
         IEnumerable<TTarget> targets,
         Func<TTarget, string> label,
         Action<TTarget> execute,
+        Action<TTarget, TimeSpan> success,
+        Action<TTarget, Exception, TimeSpan> failure,
+        int parallelism = 1
+    )
+    {
+        return Run(
+            targets,
+            label,
+            (t, report) =>
+            {
+                execute(t);
+                report(100);
+            },
+            success,
+            failure,
+            parallelism
+        );
+    }
+
+    // New API: execute can report progress [0..100]
+    public static TimeSpan Run<TTarget>(
+        IEnumerable<TTarget> targets,
+        Func<TTarget, string> label,
+        Action<TTarget, Action<double>> execute,
         Action<TTarget, TimeSpan> success,
         Action<TTarget, Exception, TimeSpan> failure,
         int parallelism = 1
@@ -32,6 +57,14 @@ public static class ProgressRunner
                 {
                     var progressTask = ctx.AddTask(label(target), maxValue: 100);
 
+                    void Report(double value)
+                    {
+                        // Clamp + monotonic (avoid accidental backwards progress)
+                        var clamped = Math.Clamp(value, 0, 100);
+                        if (clamped > progressTask.Value)
+                            progressTask.Value = clamped;
+                    }
+
                     return Task.Run(async () =>
                     {
                         await semaphore.WaitAsync();
@@ -39,10 +72,10 @@ public static class ProgressRunner
 
                         try
                         {
-                            execute(target);
+                            execute(target, Report);
 
                             sw.Stop();
-                            progressTask.Value = 100;
+                            Report(100);
 
                             lock (resultLock)
                                 success(target, sw.Elapsed);
@@ -69,4 +102,3 @@ public static class ProgressRunner
         return swTotal.Elapsed; // <<< return the total wall-clock time
     }
 }
-

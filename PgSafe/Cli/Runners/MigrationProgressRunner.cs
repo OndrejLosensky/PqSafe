@@ -1,6 +1,5 @@
 using PgSafe.Config;
 using PgSafe.Models.Migration;
-using PgSafe.Models.Backup;
 using PgSafe.Services;
 using PgSafe.Utils;
 
@@ -33,15 +32,37 @@ public static class MigrationProgressRunner
 
         ProgressRunner.Run(
             new[] { target },
-
-            // Label (shown in progress UI)
             t => $"{t.SourceInstanceName}/{t.SourceDatabaseName} → {t.TargetInstanceName}/{t.TargetDatabaseName}",
-
-            // Execute
-            t =>
+            (t, report) =>
             {
+                const double CreateDbWeight = 5;
+                const double BackupWeight = 35;
+                const double RestoreWeight = 60;
+
+                const double AfterCreateDb = CreateDbWeight;                 // 5
+                const double AfterBackup = CreateDbWeight + BackupWeight;    // 40
+                const double AfterRestore = 100;                             // 100
+
+                report(0);
+
                 if (t.DryRun)
+                {
+                    report(AfterCreateDb);
+                    report(AfterBackup);
+                    report(AfterRestore);
                     return;
+                }
+
+                // --- CREATE DB (if missing) ---
+                if (!DatabaseUtils.DatabaseExists(t.TargetInstanceConfig, t.TargetDatabaseName))
+                {
+                    DatabaseProvisioningService.CreateDatabase(
+                        t.TargetInstanceConfig,
+                        t.TargetDatabaseName
+                    );
+                }
+
+                report(AfterCreateDb);
 
                 // --- BACKUP ---
                 var backupSet = BackupService.RunSingle(
@@ -51,6 +72,8 @@ public static class MigrationProgressRunner
                     t.SourceDatabaseName
                 );
 
+                report(AfterBackup);
+
                 // --- RESTORE ---
                 RestoreService.RunSingle(
                     t.TargetInstanceName,
@@ -58,12 +81,11 @@ public static class MigrationProgressRunner
                     t.TargetDatabaseName,
                     backupSet.DumpPath
                 );
-            },
 
-            // Success
+                report(AfterRestore);
+            },
             (t, duration) =>
             {
-                // In dry-run we don’t have a real file
                 string? dumpPath = t.DryRun
                     ? null
                     : Path.Combine(
@@ -74,7 +96,6 @@ public static class MigrationProgressRunner
 
                 result.Successes.Add(new MigrationSuccess
                 {
-                    // PgTaskResult = TARGET
                     Instance = t.TargetInstanceName,
                     Database = t.TargetDatabaseName,
                     FilePath = dumpPath,
@@ -82,27 +103,19 @@ public static class MigrationProgressRunner
                         ? FileUtils.GetFileSize(dumpPath)
                         : null,
                     Duration = duration,
-
-                    // Migration-specific
                     SourceInstance = t.SourceInstanceName,
                     SourceDatabase = t.SourceDatabaseName
                 });
             },
-
-            // Failure
             (t, ex, duration) =>
             {
                 result.Failures.Add(new MigrationFailure
                 {
-                    // PgTaskResult = TARGET
                     Instance = t.TargetInstanceName,
                     Database = t.TargetDatabaseName,
                     Duration = duration,
-
-                    // Migration-specific
                     SourceInstance = t.SourceInstanceName,
                     SourceDatabase = t.SourceDatabaseName,
-
                     Error = ex.Message,
                     Details = ex.ToString()
                 });

@@ -113,20 +113,6 @@ public static class RunMigration
                 return;
         }
 
-
-        // --- Create target DB if missing ---
-        if (!DatabaseUtils.DatabaseExists(targetInstance, targetDatabaseName))
-        {
-            AnsiConsole.MarkupLine(
-                $"[green]Creating target database '{targetDatabaseName}'…[/]"
-            );
-
-            DatabaseProvisioningService.CreateDatabase(
-                targetInstance,
-                targetDatabaseName
-            );
-        }
-
         // --- Migration ---
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Starting migration…[/]");
