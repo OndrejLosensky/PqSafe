@@ -7,4 +7,7 @@ public abstract record PgTaskResult
     public string? FilePath { get; init; }
     public long? FileSizeBytes { get; init; }
     public TimeSpan Duration { get; init; }
+
+    public IReadOnlyDictionary<string, TimeSpan>? StepDurations { get; init; }
+    public IReadOnlySet<string>? SkippedSteps { get; init; }
 }

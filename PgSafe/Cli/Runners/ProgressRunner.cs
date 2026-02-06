@@ -18,7 +18,7 @@ public static class ProgressRunner
         return Run(
             targets,
             label,
-            (t, report) =>
+            (t, report, setStep) =>
             {
                 execute(t);
                 report(100);
@@ -29,11 +29,34 @@ public static class ProgressRunner
         );
     }
 
-    // New API: execute can report progress [0..100]
+    // Existing API: execute can report progress [0..100]
     public static TimeSpan Run<TTarget>(
         IEnumerable<TTarget> targets,
         Func<TTarget, string> label,
         Action<TTarget, Action<double>> execute,
+        Action<TTarget, TimeSpan> success,
+        Action<TTarget, Exception, TimeSpan> failure,
+        int parallelism = 1
+    )
+    {
+        return Run(
+            targets,
+            label,
+            (t, report, setStep) =>
+            {
+                execute(t, report);
+            },
+            success,
+            failure,
+            parallelism
+        );
+    }
+
+    // New API: execute can report progress AND set step/status text
+    public static TimeSpan Run<TTarget>(
+        IEnumerable<TTarget> targets,
+        Func<TTarget, string> label,
+        Action<TTarget, Action<double>, Action<string>> execute,
         Action<TTarget, TimeSpan> success,
         Action<TTarget, Exception, TimeSpan> failure,
         int parallelism = 1
@@ -55,7 +78,8 @@ public static class ProgressRunner
             {
                 var tasks = targets.Select(target =>
                 {
-                    var progressTask = ctx.AddTask(label(target), maxValue: 100);
+                    var baseLabel = label(target);
+                    var progressTask = ctx.AddTask(baseLabel, maxValue: 100);
 
                     void Report(double value)
                     {
@@ -65,6 +89,13 @@ public static class ProgressRunner
                             progressTask.Value = clamped;
                     }
 
+                    void SetStep(string step)
+                    {
+                        // Keep it simple: append the step to the description.
+                        // (Works even if baseLabel contains markup.)
+                        progressTask.Description = $"{baseLabel} • {step}";
+                    }
+
                     return Task.Run(async () =>
                     {
                         await semaphore.WaitAsync();
@@ -72,7 +103,7 @@ public static class ProgressRunner
 
                         try
                         {
-                            execute(target, Report);
+                            execute(target, Report, SetStep);
 
                             sw.Stop();
                             Report(100);

@@ -1,5 +1,6 @@
 using PgSafe.Models.Restore;
 using PgSafe.Models.Backup;
+using PgSafe.Models;
 using PgSafe.Services;
 using PgSafe.Config;
 using PgSafe.Utils;
@@ -27,12 +28,20 @@ public static class RestoreProgressRunner
             new[] { target },
             t => $"{t.InstanceName}/{t.DatabaseName}",
 
-            t => RestoreService.RunSingle(
-                t.InstanceName,
-                t.InstanceConfig,
-                t.DatabaseName,
-                t.DumpFile
-            ),
+            (t, report, setStep) =>
+            {
+                setStep(StepKeys.ToLabel(StepKeys.Restore));
+                report(0);
+
+                RestoreService.RunSingle(
+                    t.InstanceName,
+                    t.InstanceConfig,
+                    t.DatabaseName,
+                    t.DumpFile
+                );
+
+                report(100);
+            },
 
             (t, d) => result.Successes.Add(new RestoreSuccess
             {
@@ -40,7 +49,11 @@ public static class RestoreProgressRunner
                 Database = t.DatabaseName,
                 FilePath = t.DumpFile,
                 FileSizeBytes = FileUtils.GetFileSize(t.DumpFile),
-                Duration = d
+                Duration = d,
+                StepDurations = new Dictionary<string, TimeSpan>
+                {
+                    [StepKeys.Restore] = d
+                }
             }),
 
             (t, ex, d) =>
@@ -61,7 +74,11 @@ public static class RestoreProgressRunner
                     Error = error,
                     Details = details,
                     LogFilePath = logPath,
-                    Duration = d
+                    Duration = d,
+                    StepDurations = new Dictionary<string, TimeSpan>
+                    {
+                        [StepKeys.Restore] = d
+                    }
                 });
             }
         );

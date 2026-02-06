@@ -2,6 +2,7 @@ using PgSafe.Config;
 using PgSafe.Models.Backup;
 using PgSafe.Services;
 using PgSafe.Utils;
+using PgSafe.Models;
 
 namespace PgSafe.Cli.Runners;
 
@@ -42,18 +43,25 @@ public static class BackupProgressRunner
                 ? $"[grey](dry-run)[/] {t.InstanceName}/{t.DatabaseName}"
                 : $"{t.InstanceName}/{t.DatabaseName}",
 
-            t =>
+            (t, report, setStep) =>
             {
-                if (config.DryRun)
-                    return;
+                setStep(StepKeys.ToLabel(StepKeys.Backup));
+                report(0);
 
-                // Run backup and store the BackupSet
+                if (config.DryRun)
+                {
+                    report(100);
+                    return;
+                }
+
                 t.BackupSet = BackupService.RunSingle(
                     config.OutputDir,
                     t.InstanceName,
                     t.InstanceConfig,
                     t.DatabaseName
                 );
+
+                report(100);
             },
 
             (t, d) => result.Successes.Add(new BackupSuccess
@@ -64,7 +72,11 @@ public static class BackupProgressRunner
                 FileSizeBytes = t.BackupSet != null
                     ? FileUtils.GetFileSize(t.BackupSet.DumpPath)
                     : null,
-                Duration = d
+                Duration = d,
+                StepDurations = new Dictionary<string, TimeSpan>
+                {
+                    [StepKeys.Backup] = d
+                }
             }),
 
             (t, ex, d) => result.Failures.Add(new BackupFailure
@@ -72,9 +84,13 @@ public static class BackupProgressRunner
                 Instance = t.InstanceName,
                 Database = t.DatabaseName,
                 Error = ex.Message,
-                Duration = d
+                Duration = d,
+                StepDurations = new Dictionary<string, TimeSpan>
+                {
+                    [StepKeys.Backup] = d
+                }
             }),
-            
+
             parallelism: config.Parallelism
         );
 

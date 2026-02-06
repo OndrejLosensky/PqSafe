@@ -35,19 +35,15 @@ public static class RunSummaryRenderer
 
         table
             .AddColumn("Duration")
+            .AddColumn("Steps")
             .AddColumn("Result");
 
         if (showError)
             table.AddColumn("Error");
 
-        // Render successes
         foreach (var s in successes)
         {
-            var row = new List<string>
-            {
-                s.Instance,
-                s.Database
-            };
+            var row = new List<string> { s.Instance, s.Database };
 
             if (showFile)
                 row.Add(Path.GetFileName(s.FilePath!));
@@ -60,6 +56,7 @@ public static class RunSummaryRenderer
                 );
 
             row.Add(TimeFormatter.Humanize(s.Duration));
+            row.Add(FormatSteps(s.StepDurations, s.SkippedSteps));
             row.Add("[green]OK[/]");
 
             if (showError)
@@ -68,14 +65,9 @@ public static class RunSummaryRenderer
             table.AddRow(row.ToArray());
         }
 
-        // Render failures
         foreach (var f in failures)
         {
-            var row = new List<string>
-            {
-                f.Instance,
-                f.Database
-            };
+            var row = new List<string> { f.Instance, f.Database };
 
             if (showFile)
                 row.Add("-");
@@ -84,6 +76,7 @@ public static class RunSummaryRenderer
                 row.Add("-");
 
             row.Add(TimeFormatter.Humanize(f.Duration));
+            row.Add(FormatSteps(f.StepDurations, f.SkippedSteps));
             row.Add("[red]FAILED[/]");
 
             if (showError)
@@ -112,6 +105,53 @@ public static class RunSummaryRenderer
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(totalTable);
+    }
+
+    private static string FormatSteps(
+        IReadOnlyDictionary<string, TimeSpan>? steps,
+        IReadOnlySet<string>? skipped
+    )
+    {
+        steps ??= new Dictionary<string, TimeSpan>();
+        skipped ??= new HashSet<string>();
+
+        if (steps.Count == 0 && skipped.Count == 0)
+            return "-";
+
+        var parts = new List<string>();
+
+        foreach (var key in StepKeys.PreferredOrder)
+        {
+            if (skipped.Contains(key))
+            {
+                parts.Add($"{StepKeys.ToLabel(key)} skipped");
+                continue;
+            }
+
+            if (steps.TryGetValue(key, out var d))
+                parts.Add($"{StepKeys.ToLabel(key)} {TimeFormatter.Humanize(d)}");
+        }
+
+        // Any non-standard steps (future-proof)
+        var extras = steps.Keys
+            .Concat(skipped)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(k => !StepKeys.PreferredOrder.Contains(k))
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in extras)
+        {
+            if (skipped.Contains(key))
+            {
+                parts.Add($"{StepKeys.ToLabel(key)} skipped");
+                continue;
+            }
+
+            if (steps.TryGetValue(key, out var d))
+                parts.Add($"{StepKeys.ToLabel(key)} {TimeFormatter.Humanize(d)}");
+        }
+
+        return string.Join(" | ", parts);
     }
 
     private static string? TryGetErrorText<T>(T obj)

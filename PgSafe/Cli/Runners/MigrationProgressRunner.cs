@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using PgSafe.Config;
+using PgSafe.Models;
 using PgSafe.Models.Migration;
 using PgSafe.Services;
 using PgSafe.Utils;
@@ -30,10 +32,14 @@ public static class MigrationProgressRunner
             config.DryRun
         );
 
+        // Captured from the execute lambda; one target => this is fine.
+        var steps = new Dictionary<string, TimeSpan>(StringComparer.OrdinalIgnoreCase);
+        var skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         ProgressRunner.Run(
             new[] { target },
             t => $"{t.SourceInstanceName}/{t.SourceDatabaseName} → {t.TargetInstanceName}/{t.TargetDatabaseName}",
-            (t, report) =>
+            (t, report, setStep) =>
             {
                 const double CreateDbWeight = 5;
                 const double BackupWeight = 35;
@@ -47,24 +53,52 @@ public static class MigrationProgressRunner
 
                 if (t.DryRun)
                 {
+                    setStep(StepKeys.ToLabel(StepKeys.EnsureDb));
+                    skipped.Add(StepKeys.EnsureDb);
                     report(AfterCreateDb);
+
+                    setStep(StepKeys.ToLabel(StepKeys.Backup));
+                    skipped.Add(StepKeys.Backup);
                     report(AfterBackup);
+
+                    setStep(StepKeys.ToLabel(StepKeys.Restore));
+                    skipped.Add(StepKeys.Restore);
                     report(AfterRestore);
+
                     return;
                 }
 
-                // --- CREATE DB (if missing) ---
-                if (!DatabaseUtils.DatabaseExists(t.TargetInstanceConfig, t.TargetDatabaseName))
+                // ----------------------
+                // ENSURE DB (create if missing)
+                // ----------------------
+                setStep(StepKeys.ToLabel(StepKeys.EnsureDb));
+                var swEnsure = Stopwatch.StartNew();
+
+                var exists = DatabaseUtils.DatabaseExists(t.TargetInstanceConfig, t.TargetDatabaseName);
+                if (!exists)
                 {
                     DatabaseProvisioningService.CreateDatabase(
                         t.TargetInstanceConfig,
                         t.TargetDatabaseName
                     );
+
+                    swEnsure.Stop();
+                    steps[StepKeys.EnsureDb] = swEnsure.Elapsed;
+                }
+                else
+                {
+                    swEnsure.Stop();
+                    skipped.Add(StepKeys.EnsureDb);
                 }
 
                 report(AfterCreateDb);
 
-                // --- BACKUP ---
+                // ----------------------
+                // BACKUP
+                // ----------------------
+                setStep(StepKeys.ToLabel(StepKeys.Backup));
+                var swBackup = Stopwatch.StartNew();
+
                 var backupSet = BackupService.RunSingle(
                     t.OutputDir,
                     t.SourceInstanceName,
@@ -72,9 +106,17 @@ public static class MigrationProgressRunner
                     t.SourceDatabaseName
                 );
 
+                swBackup.Stop();
+                steps[StepKeys.Backup] = swBackup.Elapsed;
+
                 report(AfterBackup);
 
-                // --- RESTORE ---
+                // ----------------------
+                // RESTORE
+                // ----------------------
+                setStep(StepKeys.ToLabel(StepKeys.Restore));
+                var swRestore = Stopwatch.StartNew();
+
                 RestoreService.RunSingle(
                     t.TargetInstanceName,
                     t.TargetInstanceConfig,
@@ -82,10 +124,14 @@ public static class MigrationProgressRunner
                     backupSet.DumpPath
                 );
 
+                swRestore.Stop();
+                steps[StepKeys.Restore] = swRestore.Elapsed;
+
                 report(AfterRestore);
             },
             (t, duration) =>
             {
+                // In dry-run we don’t have a real file
                 string? dumpPath = t.DryRun
                     ? null
                     : Path.Combine(
@@ -96,6 +142,7 @@ public static class MigrationProgressRunner
 
                 result.Successes.Add(new MigrationSuccess
                 {
+                    // PgTaskResult = TARGET
                     Instance = t.TargetInstanceName,
                     Database = t.TargetDatabaseName,
                     FilePath = dumpPath,
@@ -103,6 +150,11 @@ public static class MigrationProgressRunner
                         ? FileUtils.GetFileSize(dumpPath)
                         : null,
                     Duration = duration,
+
+                    StepDurations = new Dictionary<string, TimeSpan>(steps, StringComparer.OrdinalIgnoreCase),
+                    SkippedSteps = new HashSet<string>(skipped, StringComparer.OrdinalIgnoreCase),
+
+                    // Migration-specific
                     SourceInstance = t.SourceInstanceName,
                     SourceDatabase = t.SourceDatabaseName
                 });
@@ -111,11 +163,18 @@ public static class MigrationProgressRunner
             {
                 result.Failures.Add(new MigrationFailure
                 {
+                    // PgTaskResult = TARGET
                     Instance = t.TargetInstanceName,
                     Database = t.TargetDatabaseName,
                     Duration = duration,
+
+                    StepDurations = new Dictionary<string, TimeSpan>(steps, StringComparer.OrdinalIgnoreCase),
+                    SkippedSteps = new HashSet<string>(skipped, StringComparer.OrdinalIgnoreCase),
+
+                    // Migration-specific
                     SourceInstance = t.SourceInstanceName,
                     SourceDatabase = t.SourceDatabaseName,
+
                     Error = ex.Message,
                     Details = ex.ToString()
                 });
